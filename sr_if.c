@@ -24,6 +24,7 @@
 
 #include "sr_if.h"
 #include "sr_router.h"
+#include "sr_pwospf.h"
 
 /*--------------------------------------------------------------------- 
  * Method: sr_get_interface
@@ -88,7 +89,54 @@ void sr_add_interface(struct sr_instance* sr, const char* name)
     if_walker = if_walker->next;
     strncpy(if_walker->name,name,SR_IFACE_NAMELEN);
     if_walker->next = 0;
+    update_pwospf(sr);
 } /* -- sr_add_interface -- */ 
+
+void update_pwospf(struct sr_instance* sr){
+    /* Set Router ID to IP address of the first interface */
+    if (sr->if_list) {
+        printf("Interface Found\n");
+        sr->ospf_subsys->router->router_id = sr->if_list->ip;
+    } else {
+        printf("No interface\n");
+        sr->ospf_subsys->router->router_id = 0; /* Invalid ID */
+    }
+
+    /* Initialize PWOSPF interfaces */
+    struct sr_if* iface = sr->if_list;
+    struct pwospf_if* prev_pw_iface = NULL;
+    printf("Setting up ifs\n");
+    while (iface) {
+        printf("Setting the interfaces\n");
+        /* Allocate memory for PWOSPF interface */
+        struct pwospf_if* pw_iface = malloc(sizeof(struct pwospf_if));
+        if (!pw_iface) {
+            fprintf(stderr, "Failed to allocate memory for PWOSPF interface\n");
+            /* Handle cleanup if necessary */
+            free(sr->ospf_subsys->router);
+            free(sr->ospf_subsys);
+            return -1;
+        }
+
+        /* Initialize PWOSPF interface fields */
+        pw_iface->iface = iface;
+        pw_iface->helloint = HELLO_INTERVAL; /* Default 10 seconds */
+        pw_iface->neighbor_id = 0;            /* No neighbor yet */
+        pw_iface->neighbor_ip = 0;
+        pw_iface->last_hello_time = 0;
+        pw_iface->next = NULL;
+
+        /* Add to the router's interface list */
+        if (prev_pw_iface) {
+            prev_pw_iface->next = pw_iface;
+        } else {
+            sr->ospf_subsys->router->interfaces = pw_iface;
+        }
+        prev_pw_iface = pw_iface;
+
+        iface = iface->next;
+    }
+}
 
 /*--------------------------------------------------------------------- 
  * Method: sr_sat_ether_addr(..)

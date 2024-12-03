@@ -224,7 +224,7 @@ void send_relevent_ipcache_entries(struct arpcache* arpcache_entry,  struct sr_i
             ip_packet_counter+=1;
         }
         if (IP_CACHE[i].valid == 1 && IP_CACHE[i].nexthop == arpcache_entry->ipaddr)
-        {                            
+        {
             uint8_t* packet = IP_CACHE[i].packet;
             struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
             struct sr_arphdr *arp_hdr = (struct sr_arphdr *)(packet + sizeof(struct sr_ethernet_hdr));

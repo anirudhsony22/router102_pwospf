@@ -32,6 +32,7 @@
 #include "sr_dumper.h"
 #include "sr_router.h"
 #include "sr_rt.h"
+#include "sr_pwospf.h"
 
 extern char* optarg;
 
@@ -163,6 +164,9 @@ int main(int argc, char **argv)
 
     /* -- whizbang main loop ;-) */
     while( sr_read_from_server(&sr) == 1);
+    pwospf_init(&sr);
+    printf("Initiated pwospf\n\n");
+    sr_print_if_list(&sr);
 
     sr_destroy_instance(&sr);
 
@@ -313,6 +317,6 @@ static void sr_load_rt_wrap(struct sr_instance* sr, char* rtable) {
 
     printf("Loading routing table\n");
     printf("---------------------------------------------\n");
-    sr_print_routing_table(sr);
+    // sr_print_routing_table(sr);
     printf("---------------------------------------------\n");
 }
