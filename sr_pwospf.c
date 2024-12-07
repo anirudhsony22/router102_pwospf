@@ -30,31 +30,65 @@ void* pwospf_run_thread(void* arg)
 {
     struct sr_instance* sr = (struct sr_instance*)arg;
     struct pwospf_router* router = sr->ospf_subsys->router;
+    int counter=0;
 
     while(1)
     {
-        printf("pwospf subsystem awake\n");
+        // printf("pwospf subsystem awake\n");
         /* Lock the PWOSPF subsystem */
         pwospf_lock(sr->ospf_subsys);
         /* Iterate over all PWOSPF interfaces and send Hello packets */
         struct pwospf_if* pw_iface = router->interfaces;
         while (pw_iface) {
-            printf("Interface\n");
             /* Send Hello packet on this interface */
             send_pwospf_hello(sr, pw_iface);
+            printf("Sent Hello Packet %s\n", pw_iface->iface->name);
             /* Update last_hello_time to current time */
             pw_iface->last_hello_time = time(NULL);
             pw_iface = pw_iface->next;
         }
+        invalidate_expired_links(sr->ospf_subsys->router->router_id, 12);
+        // invalidate_expired_links(&sr->database, sr->rid, HELLO_TIMEOUT/5);
         /* Unlock the PWOSPF subsystem */
         pwospf_unlock(sr->ospf_subsys);
         /* Sleep for the Hello interval */
-        printf("pwospf subsystem sleeping\n");
-        sleep(HELLO_INTERVAL/2); /* 10 seconds as defined earlier */
+        // printf("pwospf subsystem sleeping\n");
+        print_link_state_table();
+        if(counter%1==0){
+            //Todo: Send LSU
+            send_pwospf_lsu(sr);
+        }
+        counter++;
+        sleep(HELLO_INTERVAL); /* 10 seconds as defined earlier */
     };
     return NULL;
 } /* -- run_ospf_thread -- */
 
+void print_ip(uint32_t ip) {
+    ip=htonl(ip);
+    printf("%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
+}
+void print_link_state_table() {
+    printf("-------------------------------------------------------------\n");
+    printf("| Source Router | Neighbor Router | Subnet       | Mask       | Last Hello Time       | State  | Color |\n");
+    printf("-------------------------------------------------------------\n");
+
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+        // if (ls_db[i].state == 0 && ls_db[i].source_router_id == 0) continue; // Skip empty or invalid entries
+        print_ip(ls_db[i].source_router_id);
+        printf(" | ");
+        print_ip(ls_db[i].neighbor_router_id);
+        printf(" | ");
+        print_ip(ls_db[i].subnet);
+        printf(" | ");
+        print_ip(ls_db[i].mask);
+        printf(" | %19ld | %6s | %5u |\n", 
+               ls_db[i].last_hello_time,
+               ls_db[i].state ? "Valid" : "Invalid",
+               ls_db[i].color);
+    }
+    printf("-------------------------------------------------------------\n");
+}
 /*---------------------------------------------------------------------
  * Method: pwospf_init(..)
  *
@@ -86,10 +120,12 @@ int pwospf_init(struct sr_instance* sr)
     sr->ospf_subsys->router->area_id = PWOSPF_AREA_ID;
     sr->ospf_subsys->router->lsuint = 30; /* Default 30 seconds */
     sr->ospf_subsys->router->interfaces = NULL;
+    sr->ospf_subsys->router->sequence_number = 0;
+
 
     /* Set Router ID to IP address of the first interface */
     if (sr->if_list) {
-        printf("Interface Found\n");
+        // printf("Interface Found\n");
         sr->ospf_subsys->router->router_id = sr->if_list->ip;
     } else {
         printf("No interface\n");
@@ -103,7 +139,7 @@ int pwospf_init(struct sr_instance* sr)
     printf("Setting up ifs\n");
     int cnt = 0;
     while (iface) {
-        printf("Setting the interfaces\n");
+        // printf("Setting the interfaces\n");
         /* Allocate memory for PWOSPF interface */
         struct pwospf_if* pw_iface = malloc(sizeof(struct pwospf_if));
         if (!pw_iface) {
@@ -141,6 +177,7 @@ int pwospf_init(struct sr_instance* sr)
         /* Handle cleanup */
         /* Free interfaces */
         struct pwospf_if* current = sr->ospf_subsys->router->interfaces;
+        printf("Freeing up space in thread started\n");
         while (current) {
             struct pwospf_if* temp = current;
             current = current->next;
@@ -154,6 +191,25 @@ int pwospf_init(struct sr_instance* sr)
     return cnt < 3 ? 0 : 1; /* success */
 } /* -- pwospf_init -- */
 
+/* Set the Router ID */
+void sr_set_rid(struct sr_instance *sr) {
+    assert(sr);
+    if (sr->if_list) {
+        sr->rid = sr->if_list->addr; // Use IP of the first interface
+        printf("Router ID (RID) set to: %u\n", sr->rid);
+    } else {
+        sr->rid = 0; // Invalid RID
+        printf("No interfaces available. RID set to 0.\n");
+    }
+}
+/* Initialize the link state database (lsdb) */
+// void init_lsdb(lsdb_t *lsdb) {
+//     lsdb->count = 0;
+//     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+//         lsdb->entries[i].state = 0; // Mark all entries as invalid
+//     }
+//     printf("Link State Database initialized.\n");
+// }
 /*---------------------------------------------------------------------
  * Method: pwospf_lock
  *
@@ -205,7 +261,7 @@ void send_pwospf_hello(struct sr_instance *sr, struct pwospf_if *pw_iface) {
     pwospf_hdr->version = PWOSPF_VERSION;
     pwospf_hdr->type = PWOSPF_TYPE_HELLO;
     pwospf_hdr->packet_length = htons(pwospf_len);
-    pwospf_hdr->router_id = (pw_iface->iface->ip);    /* Router ID is the interface IP */
+    pwospf_hdr->router_id = sr->ospf_subsys->router->router_id;
     pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
     pwospf_hdr->checksum = 0;             /* Initialize checksum to zero */
     pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
@@ -292,15 +348,159 @@ void send_pwospf_hello(struct sr_instance *sr, struct pwospf_if *pw_iface) {
     free(ether_frame);
 }
 
+void send_pwospf_lsu(struct sr_instance *sr) {
+    printf("Sending LSU packets based on router interfaces\n");
+
+    // Validate the router and its interfaces
+    struct pwospf_router *router = sr->ospf_subsys->router;
+    if (!router) {
+        fprintf(stderr, "Router information not available\n");
+        return;
+    }
+
+    pthread_mutex_lock(&sr->ospf_subsys->lock); // Ensure thread safety
+
+    // Count the number of valid interfaces (advertisements)
+    int num_ads = 0;
+    struct pwospf_if *pw_iface = router->interfaces;
+    while (pw_iface) {
+        num_ads++;
+        pw_iface = pw_iface->next;
+    }
+
+    // Allocate memory for the LSU packet
+    unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + num_ads * sizeof(lsu_adv_t);
+    uint8_t *lsu_packet = (uint8_t *)malloc(lsu_len);
+    if (!lsu_packet) {
+        fprintf(stderr, "Memory allocation failed for LSU packet\n");
+        pthread_mutex_unlock(&sr->ospf_subsys->lock);
+        return;
+    }
+    memset(lsu_packet, 0, lsu_len);
+
+    // Construct PWOSPF header
+    pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)lsu_packet;
+    pwospf_hdr->version = PWOSPF_VERSION;
+    pwospf_hdr->type = PWOSPF_TYPE_LSU;
+    pwospf_hdr->packet_length = htons(lsu_len);
+    pwospf_hdr->router_id = router->router_id;
+    pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
+    pwospf_hdr->checksum = 0; // Placeholder
+    pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
+    pwospf_hdr->authentication = 0;
+
+    // Construct LSU header
+    lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
+    lsu_hdr->sequence = router->sequence_number++;
+    printf("Send side Sequence: %d\n",lsu_hdr->sequence);
+    lsu_hdr->ttl = DEFAULT_LSU_TTL;
+    lsu_hdr->num_ads = htonl(num_ads);
+
+    // Add advertisements from interfaces
+    lsu_adv_t *advertisements = (lsu_adv_t *)(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t));
+    pw_iface = router->interfaces;
+    int ad_index = 0;
+    while (pw_iface) {
+        advertisements[ad_index].subnet = pw_iface->iface->ip & pw_iface->iface->mask; // Subnet calculation
+        advertisements[ad_index].mask = pw_iface->iface->mask;
+        advertisements[ad_index].router_id = pw_iface->neighbor_id; // Neighbor router ID
+        ad_index++;
+        pw_iface = pw_iface->next;
+    }
+
+    // Compute checksum
+    int checksum_len = lsu_len - sizeof(pwospf_hdr->authentication);
+    pwospf_hdr->checksum = get_checksum((uint16_t *)lsu_packet, checksum_len / 2);
+
+    // Send LSU to each neighbor
+    pw_iface = router->interfaces;
+
+    while (pw_iface) {
+        // Create IP and Ethernet headers for each neighbor
+        unsigned int ip_len = sizeof(struct ip) + lsu_len;
+        uint8_t *ip_packet = (uint8_t *)malloc(ip_len);
+        if (!ip_packet) {
+            fprintf(stderr, "Memory allocation failed for IP packet\n");
+            free(lsu_packet);
+            pthread_mutex_unlock(&sr->ospf_subsys->lock);
+            return;
+        }
+        memset(ip_packet, 0, ip_len);
+
+        struct ip *ip_hdr = (struct ip *)ip_packet;
+        ip_hdr->ip_hl = 5;
+        ip_hdr->ip_v = 4;
+        ip_hdr->ip_tos = 0;
+        ip_hdr->ip_len = htons(ip_len);
+        ip_hdr->ip_id = htons(0);
+        ip_hdr->ip_off = htons(IP_DF);
+        ip_hdr->ip_ttl = 64;
+        ip_hdr->ip_p = OSPF_PROTOCOL_NUMBER;
+        ip_hdr->ip_src.s_addr = pw_iface->iface->ip;
+        ip_hdr->ip_dst.s_addr = pw_iface->neighbor_ip; // Direct neighbor's IP
+
+        ip_hdr->ip_sum = 0;
+        ip_hdr->ip_sum = get_checksum((uint16_t *)ip_hdr, ip_hdr->ip_hl * 2);
+
+        // Copy LSU packet into IP payload
+        memcpy(ip_packet + sizeof(struct ip), lsu_packet, lsu_len);
+
+        unsigned int ether_len = sizeof(struct sr_ethernet_hdr) + ip_len;
+        uint8_t *ether_frame = (uint8_t *)malloc(ether_len);
+        if (!ether_frame) {
+            fprintf(stderr, "Memory allocation failed for Ethernet frame\n");
+            free(lsu_packet);
+            free(ip_packet);
+            pthread_mutex_unlock(&sr->ospf_subsys->lock);
+            return;
+        }
+        memset(ether_frame, 0, ether_len);
+
+        struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)ether_frame;
+        /* Set destination MAC to multicast address for OSPF (01:00:5e:00:00:05) */
+        eth_hdr->ether_dhost[0] = 0x01;
+        eth_hdr->ether_dhost[1] = 0x00;
+        eth_hdr->ether_dhost[2] = 0x5e;
+        eth_hdr->ether_dhost[3] = 0x00;
+        eth_hdr->ether_dhost[4] = 0x00;
+        eth_hdr->ether_dhost[5] = 0x05;
+        /* Source MAC is interface MAC */
+        memcpy(eth_hdr->ether_shost, pw_iface->iface->addr, ETHER_ADDR_LEN);
+        eth_hdr->ether_type = htons(ETHERTYPE_IP); /* Ethernet type for IP */
+        
+        /* Copy IP packet into Ethernet frame */
+        memcpy(ether_frame + sizeof(struct sr_ethernet_hdr), ip_packet, ip_len);
+
+        // print_all_headers(eth_hdr, ip_hdr, pwospf_hdr, lsu_hdr, advertisements, num_ads);
+        // Send the Ethernet frame
+        sr_send_packet(sr, ether_frame, ether_len, pw_iface->iface->name);
+
+        // Clean up
+        free(ip_packet);
+        free(ether_frame);
+
+        pw_iface = pw_iface->next;
+    }
+
+    free(lsu_packet);
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
+}
+
 void* populate_pwospf(void* sr_arg) {
     struct sr_instance *sr = sr_arg;
 
     while (1) {
-        printf("pwospf_init Thread is running...\n");
+        // printf("pwospf_init Thread is running...\n");
         int all_good = pwospf_init(sr);
 
         if (all_good == 1) {
-            printf("############################ #ALLGOOD ##########################\n\n");
+            printf("All Good################");
+            struct sr_if* iface = sr->if_list;
+            uint32_t source_router_id = sr->ospf_subsys->router->router_id;
+            while (iface) {
+                update_lsdb(source_router_id, 0, iface->ip, iface->mask, 1);
+                iface = iface->next;
+            }
             break;
         }
         sleep(1);
@@ -334,5 +534,185 @@ void handle_hello(struct sr_instance *sr,
         } else {
             send_relevent_ipcache_entries(new_arpcache, sr);
         }
+    }
+}
+
+void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint32_t mask, int is_current_id) {
+    printf("Entered Update LSDB\n");
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+        if (ls_db[i].source_router_id == source_id && (ls_db[i].subnet & ls_db[i].mask) == (subnet & mask)) {
+            if(ls_db[i].neighbor_router_id==0 && is_current_id==1){
+                //Todo: Send LSU
+            }
+            ls_db[i].neighbor_router_id = neighbor_id;
+            ls_db[i].subnet = subnet;
+            ls_db[i].last_hello_time = time(NULL); // Update timer
+            ls_db[i].mask = mask;
+            ls_db[i].state = 1; 
+            // printf("Updated hahaha\n");
+            return;
+        }
+    }
+    printf("No mathcing entry, hence creating new one\n");
+    for (int i=0; i<MAX_LINK_STATE_ENTRIES; i++){
+        // printf("The state: %d \n\n",ls_db[i].state);
+        if(ls_db[i].state==0){
+            ls_db[i].source_router_id = source_id;
+            ls_db[i].neighbor_router_id = neighbor_id;
+            ls_db[i].subnet = subnet;
+            ls_db[i].last_hello_time = time(NULL); // Update timer
+            ls_db[i].mask = mask;
+            ls_db[i].state = 1; 
+            // printf("Updated hahaha\n");
+            return;
+        }
+    }
+}
+
+void clear_lsdb(uint32_t source_id){
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
+        if(ls_db[i].source_router_id == source_id){
+            ls_db[i].state = 0; //Invalidate it
+        }
+    }
+}
+
+void init_lsdb(){
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
+        ls_db[i].state = 0;
+    }
+}
+
+void invalidate_expired_links(uint32_t current_router_id, time_t timeout) {
+    time_t now = time(NULL);
+    // printf("In the invalidate loop\n");
+    // print_ip_address(ntohl(current_router_id));
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+        if (ls_db[i].state == 1 && 
+            (ls_db[i].source_router_id == current_router_id) && 
+            (now - ls_db[i].last_hello_time > timeout) &&
+            ls_db[i].neighbor_router_id != 0) {
+
+            uint32_t prev_id = ls_db[i].neighbor_router_id;
+            ls_db[i].neighbor_router_id = 0;
+
+            printf("Invatlidating the links of router: \n");
+            //Todo: Send LSU
+            // print_ip(ls_db[i].source_router_id);
+            // printf("neighbor id: \n");
+            // print_ip(prev_id);
+            // printf("\n");
+        }
+    }
+}
+
+void init_seq(){
+    for(int i=0;i<MAX_ROUTERS;i++){
+        seq[i].last_sequence_num=-1;
+    }
+}
+
+int is_valid_sequence(uint32_t source, uint32_t check){
+    for (int i = 0; i < MAX_ROUTERS; i++) {
+        if (seq[i].source_router_id == source) {
+            if(seq[i].last_sequence_num>=check){
+                return 0;
+            }
+            seq[i].last_sequence_num=check;
+            return 1;
+        }
+    }
+    for (int i = 0; i < MAX_ROUTERS; i++) {
+        if(seq[i].last_sequence_num==-1){
+            seq[i].source_router_id = source;
+            seq[i].last_sequence_num = check;
+            return 1;
+        }
+    }
+}
+
+void print_sequence_table(sequence_table_entry_t *seq, int size) {
+    printf("Sequence Table:\n");
+    printf("--------------------------------------------------\n");
+    printf("| Source Router ID     | Last Sequence Number    |\n");
+    printf("--------------------------------------------------\n");
+    for (int i = 0; i < size; i++) {
+        printf("| %-20u | %-22u |\n", seq[i].source_router_id, seq[i].last_sequence_num);
+    }
+    printf("--------------------------------------------------\n");
+}
+
+
+void print_lsu_packet(lsu_hdr_t *lsu_h, lsu_adv_t *lsu_a, uint32_t num_advertisements) {
+    printf("LSU Header:\n");
+    printf("----------------------------------------\n");
+    printf("Sequence Number: %u\n", ntohl(lsu_h->sequence));
+    printf("TTL: %u\n", lsu_h->ttl);
+    printf("Number of Advertisements: %u\n", ntohl(lsu_h->num_ads));
+    printf("----------------------------------------\n");
+
+    // Print each advertisement
+    printf("LSU Advertisements:\n");
+    for (uint32_t i = 0; i < num_advertisements; i++) {
+        printf("  Advertisement %u:\n", i + 1);
+        printf("    Subnet: ");
+        print_ip(lsu_a[i].subnet);
+        printf("\n    Mask: ");
+        print_ip(lsu_a[i].mask);
+        printf("\n    Router ID: ");
+        print_ip(lsu_a[i].router_id);
+        printf("\n");
+    }
+}
+
+void print_all_headers(struct sr_ethernet_hdr *eth_hdr, struct ip *ip_hdr, 
+                       pwospf_hdr_t *pwospf_hdr, lsu_hdr_t *lsu_hdr, 
+                       lsu_adv_t *advertisements, int num_ads) {
+    printf("\n--- Ethernet Header ---\n");
+    printf("  Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1], eth_hdr->ether_dhost[2],
+           eth_hdr->ether_dhost[3], eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
+    printf("  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           eth_hdr->ether_shost[0], eth_hdr->ether_shost[1], eth_hdr->ether_shost[2],
+           eth_hdr->ether_shost[3], eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
+    printf("  EtherType: 0x%04x\n", ntohs(eth_hdr->ether_type));
+
+    printf("\n--- IP Header ---\n");
+    printf("  Version: %d\n", ip_hdr->ip_v);
+    printf("  Header Length: %d bytes\n", ip_hdr->ip_hl * 4);
+    printf("  Total Length: %d bytes\n", ntohs(ip_hdr->ip_len));
+    printf("  Protocol: %d\n", ip_hdr->ip_p);
+    printf("  Source IP: ");
+    print_ip(ntohl(ip_hdr->ip_src.s_addr));
+    printf("\n  Destination IP: ");
+    print_ip(ntohl(ip_hdr->ip_dst.s_addr));
+    printf("\n");
+
+    printf("\n--- PWOSPF Header ---\n");
+    printf("  Version: %d\n", pwospf_hdr->version);
+    printf("  Type: %d\n", pwospf_hdr->type);
+    printf("  Packet Length: %u\n", ntohs(pwospf_hdr->packet_length));
+    printf("  Router ID: ");
+    print_ip(pwospf_hdr->router_id);
+    printf("\n  Area ID: ");
+    print_ip(ntohl(pwospf_hdr->area_id));
+    printf("\n  Checksum: 0x%04x\n", pwospf_hdr->checksum);
+    printf("  Authentication Type: %u\n", ntohs(pwospf_hdr->autype));
+
+    printf("\n--- LSU Header ---\n");
+    printf("  Sequence Number: %u\n", lsu_hdr->sequence);
+    printf("  TTL: %u\n", lsu_hdr->ttl);
+    printf("  Number of Advertisements: %u\n", ntohl(lsu_hdr->num_ads));
+
+    printf("\n--- LSU Advertisements ---\n");
+    for (int i = 0; i < num_ads; i++) {
+        printf("  Advertisement %d:\n", i + 1);
+        printf("    Subnet: ");
+        print_ip(advertisements[i].subnet);
+        printf("\n    Mask: ");
+        print_ip(advertisements[i].mask);
+        printf("\n    Router ID: ");
+        print_ip(advertisements[i].router_id);
+        printf("\n");
     }
 }

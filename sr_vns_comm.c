@@ -675,7 +675,7 @@ int sr_send_packet(struct sr_instance* sr /* borrowed */,
     }
 
     free(sr_pkt);
-    printf("Packet Sent\n\n");
+    // printf("Packet Sent\n\n");
     return 0;
 } /* -- sr_send_packet -- */
 

@@ -95,7 +95,7 @@ void sr_add_interface(struct sr_instance* sr, const char* name)
 void update_pwospf(struct sr_instance* sr){
     /* Set Router ID to IP address of the first interface */
     if (sr->if_list) {
-        printf("Interface Found\n");
+        // printf("Interface Found\n");
         sr->ospf_subsys->router->router_id = sr->if_list->ip;
     } else {
         printf("No interface\n");
@@ -105,9 +105,9 @@ void update_pwospf(struct sr_instance* sr){
     /* Initialize PWOSPF interfaces */
     struct sr_if* iface = sr->if_list;
     struct pwospf_if* prev_pw_iface = NULL;
-    printf("Setting up ifs\n");
+    // printf("Setting up ifs\n");
     while (iface) {
-        printf("Setting the interfaces\n");
+        // printf("Setting the interfaces\n");
         /* Allocate memory for PWOSPF interface */
         struct pwospf_if* pw_iface = malloc(sizeof(struct pwospf_if));
         if (!pw_iface) {
@@ -260,10 +260,10 @@ void sr_print_if(struct sr_if* iface)
     ip_addr.s_addr = iface->ip;
     mask_addr.s_addr = iface->mask;
 
-    Debug("Interface: %s\n",iface->name);
-    Debug("  hardware address ");
-    DebugMAC(iface->addr);
-    Debug("\n");
-    Debug("  mask %s\n",inet_ntoa(mask_addr));
-    Debug("  ip address %s\n",inet_ntoa(ip_addr));
+    // Debug("Interface: %s\n",iface->name);
+    // Debug("  hardware address ");
+    // DebugMAC(iface->addr);
+    // Debug("\n");
+    // Debug("  mask %s\n",inet_ntoa(mask_addr));
+    // Debug("  ip address %s\n",inet_ntoa(ip_addr));
 } /* -- sr_print_if -- */

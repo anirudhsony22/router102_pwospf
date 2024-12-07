@@ -116,45 +116,54 @@ void print_incoming_packet_stats(uint8_t* packet, char* interface) {
 }
 
 int is_hello(uint8_t *packet, size_t len) {
-    printf("############Indide Hello 1\n");
-    printf("%d %d %d %d\n\n\n", len, sizeof(struct sr_ethernet_hdr), sizeof(struct ip), sizeof(pwospf_hdr_t));
     if (len < sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t)) {
         return 0; // Not a valid PWOSPF Hello packet
     }
-    printf("############Indide Hello 2\n");
     struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
     if (ntohs(eth_hdr->ether_type) != ETHERTYPE_IP) {
         return 0; // Not an IP packet
     }
-    printf("############Indide Hello 3\n");
     struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
     if (ip_hdr->ip_p != OSPF_PROTOCOL_NUMBER) {
         return 0; // Not an OSPF packet
     }
-    printf("############Indide Hello 4\n");
     pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
     if (pwospf_hdr->version != PWOSPF_VERSION || pwospf_hdr->type != PWOSPF_TYPE_HELLO) {
         return 0; // Not a PWOSPF Hello packet
     }
-    // // Verify checksum (optional, for additional validation)
-    // uint16_t computed_checksum = get_checksum((uint16_t *)pwospf_hdr, (pwospf_hdr->packet_length - sizeof(pwospf_hdr->authentication)) / 2);
-    // if (computed_checksum != pwospf_hdr->checksum) {
-    //     return 0;
-    // }
+    return 1;
+}
+int is_lsu(uint8_t *packet, size_t len) {
+    if (len < sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t)) {
+        return 0; // Not a valid PWOSPF Hello packet
+    }
+    struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+    if (ntohs(eth_hdr->ether_type) != ETHERTYPE_IP) {
+        return 0; // Not an IP packet
+    }
+    struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+    if (ip_hdr->ip_p != OSPF_PROTOCOL_NUMBER) {
+        return 0; // Not an OSPF packet
+    }
+    pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
+    if (pwospf_hdr->version != PWOSPF_VERSION || pwospf_hdr->type != PWOSPF_TYPE_LSU) {
+        return 0; // Not a PWOSPF Hello packet
+    }
     return 1;
 }
 
 void sr_handlepacket(struct sr_instance *sr,
                      uint8_t *packet /* lent */,
                      unsigned int len,
-                     char *interface /* lent */)
+                     char *interface /* lent */
+                    )
 {
     /* REQUIRES */
 
     assert(sr);
     assert(packet);
     assert(interface);
-    print_incoming_packet_stats(packet, interface);
+    // print_incoming_packet_stats(packet, interface);
     if (!is_valid_ethernet_packet(len)) {
         print_drop();
         return;
@@ -175,12 +184,63 @@ void sr_handlepacket(struct sr_instance *sr,
             }
             if(is_hello(packet, len)){
                 printf("!!!!!!!!!!!!!!!!!!!!!#########################FFFFFFFFFFF Rec'd Hello **************************************\n");
+                printf("\n\n");
+                printf("Entering the read part:\n");
+                struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+                struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+                struct pwospf_hdr *pwospf_hdr = (struct pwospf_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
+                struct pwospf_hello *hello = (struct pwospf_hello *)(pwospf_hdr + sizeof(pwospf_hdr_t));
+                printf("Done the read part:\n");
+                print_ip_address(pwospf_hdr->router_id);
+                printf("\n");
+                // Extract details
+                uint32_t source_router_id = sr->ospf_subsys->router->router_id;
+                uint32_t neighbor_id = pwospf_hdr->router_id;
+                uint32_t subnet = sr_get_interface(sr, interface)->ip; // Already in host byte order
+                uint32_t mask = sr_get_interface(sr, interface)->mask;
+                update_lsdb(source_router_id, neighbor_id, subnet, mask);
+            }
+            else if(is_lsu(packet, len)){
+                printf("!!!!!!!!!!!!!!!!!!!!!#########################FFFFFFFFFFF Rec'd LSU **************************************\n");
+                //Handle LSU
+                struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+                struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+                struct pwospf_hdr *pwospf_hdr = (struct pwospf_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
+                
+                struct lsu_hdr *lsu_h = (struct lsu_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t));
+                struct lsu_adv *lsu_a = (struct lsu_adv *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t));
+
+                uint32_t source_router_id = (pwospf_hdr->router_id);
+                uint32_t sequence_number = lsu_h->sequence;
+                uint8_t ttl = lsu_h->ttl;
+                uint32_t num_adv = ntohl(lsu_h->num_ads);
+                print_ip_address(pwospf_hdr->router_id);
+                printf("\n");
+                print_lsu_packet(lsu_h, lsu_a, 4);
+                // printf("\n");
+                // printf("Sequence Number: %d\n\n",sequence_number);
+                // printf("TTL Number: %d\n\n",ttl);
+                
+                if(is_valid_sequence(source_router_id, sequence_number)){
+                    printf("Is Valid Sequence\n");
+                    clear_lsdb(source_router_id);
+                    for (uint32_t i = 0; i < num_adv; i++) {
+                        struct lsu_adv *current_adv = &lsu_a[i];
+                        uint32_t subnet = (current_adv->subnet);
+                        uint32_t mask = (current_adv->mask);
+                        uint32_t neighbor_id = (current_adv->router_id);
+                        update_lsdb(source_router_id, neighbor_id, subnet, mask, 0);
+                    }
+                }
+                else{
+                    printf("Not a valid sequence\n");
+                }
+                print_sequence_table(seq, MAX_ROUTERS);
             }
             else{
                 populate_ip_header(packet);
                 handle_ip(packet, sr, len, interface);
             }
-
             break;
         default:
             printf("Received an unknown packet type: 0x%04x\n", ntohs(eth_hdr->ether_type));

@@ -64,6 +64,8 @@ struct sr_instance
 
     /* -- pwospf subsystem -- */
     struct pwospf_subsys* ospf_subsys;
+    struct lsdb* database;
+    uint32_t rid;
 };
 
 /* -- sr_main.c -- */
@@ -76,7 +78,7 @@ int sr_read_from_server(struct sr_instance* );
 
 /* -- sr_router.c -- */
 void sr_init(struct sr_instance* );
-void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
+void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char*);
 
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );
