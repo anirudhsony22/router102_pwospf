@@ -117,7 +117,6 @@ typedef struct sequence_table_entry {
 struct sequence_table_entry seq[MAX_ROUTERS];
 
 typedef struct queue {
-    uint32_t source_router_id;
     uint32_t neighbor_router_id;
     uint32_t subnet;
     uint32_t mask;

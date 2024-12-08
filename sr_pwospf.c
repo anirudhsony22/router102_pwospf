@@ -48,7 +48,7 @@ void* pwospf_run_thread(void* arg)
             pw_iface->last_hello_time = time(NULL);
             pw_iface = pw_iface->next;
         }
-        invalidate_expired_links(sr->ospf_subsys->router->router_id, 12);
+        invalidate_expired_links(sr->ospf_subsys->router->router_id, 12, sr);
         // invalidate_expired_links(&sr->database, sr->rid, HELLO_TIMEOUT/5);
         /* Unlock the PWOSPF subsystem */
         pwospf_unlock(sr->ospf_subsys);
@@ -588,7 +588,7 @@ void init_lsdb(){
     }
 }
 
-void invalidate_expired_links(uint32_t current_router_id, time_t timeout) {
+void invalidate_expired_links(uint32_t current_router_id, time_t timeout, struct sr_instance *sr) {
     time_t now = time(NULL);
     // printf("In the invalidate loop\n");
     // print_ip_address(ntohl(current_router_id));
@@ -602,6 +602,7 @@ void invalidate_expired_links(uint32_t current_router_id, time_t timeout) {
             ls_db[i].neighbor_router_id = 0;
 
             printf("Invalidating the links of router: \n");
+            send_pwospf_lsu(sr);
             //Todo: Send LSU
             // print_ip(ls_db[i].source_router_id);
             // printf("neighbor id: \n");
@@ -723,11 +724,10 @@ void print_all_headers(struct sr_ethernet_hdr *eth_hdr, struct ip *ip_hdr,
 }
 
 
-void add_routing_entry(uint32_t destination_router_id, uint32_t next_hop, uint32_t subnet, uint32_t mask, int *rt_index) {
+void add_routing_entry(uint32_t next_hop, uint32_t subnet, uint32_t mask, int *rt_index) {
     if (*rt_index < 15) {
         dynamic_routing_table[*rt_index].dest.s_addr = subnet;
         dynamic_routing_table[*rt_index].gw.s_addr = next_hop;
-        // dynamic_routing_table[*rt_index].subnet = subnet;
         dynamic_routing_table[*rt_index].mask.s_addr = mask;
         dynamic_routing_table[*rt_index].used = 1;
         (*rt_index)++;
@@ -745,38 +745,45 @@ void create_routing_table(uint32_t my_router_id) {
     for (int i=0;i<15;i++){
         dynamic_routing_table[i].used=0;
     }
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
+        ls_db[i].color=WHITE;
+    }
 
     //Add direct neighbors
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
         if (ls_db[i].state == 1 && 
-            ls_db[i].source_router_id == my_router_id &&
-            ls_db[i].neighbor_router_id != 0) {
-                
-                qt[rear].neighbor_router_id = ls_db[i].neighbor_router_id;
-                qt[rear].subnet = ls_db[i].subnet;
-                qt[rear].mask = ls_db[i].mask;
-                qt[rear].next_hop = ls_db[i].neighbor_router_id;
-                ls_db[i].color = BLACK;
-                rear++;
-                add_routing_entry(
-                    ls_db[i].neighbor_router_id, // Destination router ID
-                    ls_db[i].neighbor_router_id, // Next hop is the neighbor itself
-                    ls_db[i].subnet,             // Subnet of the link
-                    ls_db[i].mask,               // Subnet mask
-                    &rt_index                    // Routing table index
+            ls_db[i].source_router_id == my_router_id) {
+            qt[rear].neighbor_router_id = ls_db[i].neighbor_router_id;
+            qt[rear].subnet = ls_db[i].subnet;
+            qt[rear].mask = ls_db[i].mask;
+            qt[rear].next_hop = ls_db[i].neighbor_router_id;
+            rear++;
+            add_routing_entry(
+                ls_db[i].neighbor_router_id, // Next hop is the neighbor itself
+                ls_db[i].subnet,             // Subnet of the link
+                ls_db[i].mask,               // Subnet mask
+                &rt_index                     // Routing table index
             );
+            ls_db[i].color = BLACK;
+            printf("Adding link :");
+            print_ip(ls_db[i].subnet);
+            printf("\n");
         }
     }
 
     //Add others
     while(front<rear){
+        //Pop the element from the queue
         uint32_t current_router_id = qt[front].neighbor_router_id;
         uint32_t next_hop = qt[front].next_hop;
+
         for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
             if (ls_db[i].state == 1 && ls_db[i].source_router_id == current_router_id) {
+                
                 //Current Subnet
                 uint32_t c_sn = ls_db[i].subnet;
                 int link_used = 0;
+
                 //Check if this subnet was used before
                 for (int j=0; j<MAX_LINK_STATE_ENTRIES;j++){
                     if(ls_db[j].subnet == c_sn && ls_db[j].state == 1 && ls_db[j].color==BLACK){
@@ -785,7 +792,10 @@ void create_routing_table(uint32_t my_router_id) {
                 }
 
                 //If not used, add it to our routing table
-                if(!link_used){
+                if(link_used==0){
+                    printf("Adding link :");
+                    print_ip(ls_db[i].subnet);
+                    printf("\n");
                     qt[rear].neighbor_router_id = ls_db[i].neighbor_router_id;
                     qt[rear].subnet = ls_db[i].subnet;
                     qt[rear].mask = ls_db[i].mask;
@@ -793,13 +803,17 @@ void create_routing_table(uint32_t my_router_id) {
                     ls_db[i].color = BLACK;
                     rear++;
                     add_routing_entry(
-                        ls_db[i].neighbor_router_id,
                         next_hop,
                         ls_db[i].subnet,
                         ls_db[i].mask,
                         &rt_index                        
                     );
                     ls_db[i].color=BLACK;
+                }
+                else{
+                    printf("Link Used :");
+                    print_ip(ls_db[i].subnet);
+                    printf("\n");
                 }
             }
         }
