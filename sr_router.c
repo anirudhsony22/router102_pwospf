@@ -199,6 +199,8 @@ void sr_handlepacket(struct sr_instance *sr,
                 uint32_t subnet = sr_get_interface(sr, interface)->ip; // Already in host byte order
                 uint32_t mask = sr_get_interface(sr, interface)->mask;
                 update_lsdb(source_router_id, neighbor_id, subnet, mask);
+                create_routing_table(sr->ospf_subsys->router->router_id);
+                print_routing_table(dynamic_routing_table, 6);
             }
             else if(is_lsu(packet, len)){
                 printf("!!!!!!!!!!!!!!!!!!!!!#########################FFFFFFFFFFF Rec'd LSU **************************************\n");
@@ -207,13 +209,15 @@ void sr_handlepacket(struct sr_instance *sr,
                 struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
                 struct pwospf_hdr *pwospf_hdr = (struct pwospf_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
                 
+                // struct lsu_hdr *lsu_h = (struct lsu_hdr *)((uint8_t*)pwospf_hdr + sizeof(pwospf_hdr_t));
+                // struct lsu_adv *lsu_a = (struct lsu_adv *)((uint8_t*)lsu_h + sizeof(lsu_hdr_t));
                 struct lsu_hdr *lsu_h = (struct lsu_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t));
                 struct lsu_adv *lsu_a = (struct lsu_adv *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t));
 
                 uint32_t source_router_id = (pwospf_hdr->router_id);
                 uint32_t sequence_number = lsu_h->sequence;
                 uint8_t ttl = lsu_h->ttl;
-                uint32_t num_adv = ntohl(lsu_h->num_ads);
+                uint32_t num_adv = lsu_h->num_ads;
                 print_ip_address(pwospf_hdr->router_id);
                 printf("\n");
                 print_lsu_packet(lsu_h, lsu_a, 4);
@@ -230,7 +234,10 @@ void sr_handlepacket(struct sr_instance *sr,
                         uint32_t mask = (current_adv->mask);
                         uint32_t neighbor_id = (current_adv->router_id);
                         update_lsdb(source_router_id, neighbor_id, subnet, mask, 0);
+                        printf("num_adv: %d \n", num_adv);
                     }
+                    create_routing_table(sr->ospf_subsys->router->router_id);
+                    print_routing_table(dynamic_routing_table, 6);
                 }
                 else{
                     printf("Not a valid sequence\n");
