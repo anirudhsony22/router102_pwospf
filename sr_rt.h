@@ -34,6 +34,7 @@ struct sr_rt
     struct in_addr mask;
     char   interface[SR_IFACE_NAMELEN];
     struct sr_rt* next;
+    int dynamic;
 };
 
 struct sr_rt2
@@ -42,9 +43,8 @@ struct sr_rt2
     struct in_addr gw;
     struct in_addr mask;
     char   interface[SR_IFACE_NAMELEN];
-    struct sr_rt* next;
-    struct in_addr parent;
-    int used;
+    struct sr_rt2* next;
+    int dynamic;
 };
 
 struct sr_rt2 dynamic_routing_table[15];

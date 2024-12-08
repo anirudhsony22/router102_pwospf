@@ -729,7 +729,11 @@ void add_routing_entry(uint32_t next_hop, uint32_t subnet, uint32_t mask, int *r
         dynamic_routing_table[*rt_index].dest.s_addr = subnet;
         dynamic_routing_table[*rt_index].gw.s_addr = next_hop;
         dynamic_routing_table[*rt_index].mask.s_addr = mask;
-        dynamic_routing_table[*rt_index].used = 1;
+        dynamic_routing_table[*rt_index].next = NULL;
+        dynamic_routing_table[*rt_index].dynamic = 1;
+        if (*rt_index > 0) {
+            dynamic_routing_table[*rt_index - 1].next = &dynamic_routing_table[*rt_index];
+        }
         (*rt_index)++;
     } else {
         printf("Routing table is full!\n");
@@ -742,9 +746,9 @@ void create_routing_table(uint32_t my_router_id) {
     int front = 0;
     int rt_index = 0; // Start index for routing table
 
-    for (int i=0;i<15;i++){
-        dynamic_routing_table[i].used=0;
-    }
+    // for (int i=0;i<15;i++){
+    //     dynamic_routing_table[i].used=0;
+    // }
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
         ls_db[i].color=WHITE;
     }
@@ -765,9 +769,9 @@ void create_routing_table(uint32_t my_router_id) {
                 &rt_index                     // Routing table index
             );
             ls_db[i].color = BLACK;
-            printf("Adding link :");
-            print_ip(ls_db[i].subnet);
-            printf("\n");
+            // printf("Adding link :");
+            // print_ip(ls_db[i].subnet);
+            // printf("\n");
         }
     }
 
@@ -793,9 +797,9 @@ void create_routing_table(uint32_t my_router_id) {
 
                 //If not used, add it to our routing table
                 if(link_used==0){
-                    printf("Adding link :");
-                    print_ip(ls_db[i].subnet);
-                    printf("\n");
+                    // printf("Adding link :");
+                    // print_ip(ls_db[i].subnet);
+                    // printf("\n");
                     qt[rear].neighbor_router_id = ls_db[i].neighbor_router_id;
                     qt[rear].subnet = ls_db[i].subnet;
                     qt[rear].mask = ls_db[i].mask;
@@ -811,9 +815,9 @@ void create_routing_table(uint32_t my_router_id) {
                     ls_db[i].color=BLACK;
                 }
                 else{
-                    printf("Link Used :");
-                    print_ip(ls_db[i].subnet);
-                    printf("\n");
+                    // printf("Link Used :");
+                    // print_ip(ls_db[i].subnet);
+                    // printf("\n");
                 }
             }
         }
@@ -823,6 +827,18 @@ void create_routing_table(uint32_t my_router_id) {
 
 }
 
+
+void link_static_and_dynamic_tables(struct sr_instance* sr) {
+    struct sr_rt* rt_walker = sr->routing_table;
+    if (rt_walker == NULL || rt_walker->dynamic==1) {
+        sr->routing_table = (struct sr_rt*)&dynamic_routing_table[0];
+    } else {
+        while (rt_walker->next && rt_walker->next->dynamic==0) {
+            rt_walker = rt_walker->next;
+        }
+        rt_walker->next = (struct sr_rt*)&dynamic_routing_table[0];
+    }
+}
 
 // void build_routing_table_in_place(uint32_t my_router_id) {
 //     int rt_index = 0;
@@ -874,22 +890,18 @@ void create_routing_table(uint32_t my_router_id) {
 
 void print_routing_table(struct sr_rt2 table[], int size) {
     printf("Routing Table:\n");
-    printf("|%-16s | %-16s | %-16s | %-16s | %-5s |\n", "Destination", "Next Hop", "Mask", "Interface", "Used");
+    printf("|%-16s | %-16s | %-16s | %-16s |\n", "Destination", "Next Hop", "Mask", "Interface");
     printf("--------------------------------------------------------------------------------\n");
     for (int i = 0; i < size; i++) {
-        if (table[i].used) {
-            char dest_ip[INET_ADDRSTRLEN];
-            char gw_ip[INET_ADDRSTRLEN];
-            char mask_ip[INET_ADDRSTRLEN];
-            char parent_ip[INET_ADDRSTRLEN];
+        char dest_ip[INET_ADDRSTRLEN];
+        char gw_ip[INET_ADDRSTRLEN];
+        char mask_ip[INET_ADDRSTRLEN];
 
-            inet_ntop(AF_INET, &table[i].dest, dest_ip, INET_ADDRSTRLEN);
-            inet_ntop(AF_INET, &table[i].gw, gw_ip, INET_ADDRSTRLEN);
-            inet_ntop(AF_INET, &table[i].mask, mask_ip, INET_ADDRSTRLEN);
-            inet_ntop(AF_INET, &table[i].parent, parent_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &table[i].dest, dest_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &table[i].gw, gw_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &table[i].mask, mask_ip, INET_ADDRSTRLEN);
 
-            printf("|%-16s | %-16s | %-16s | %-16s | %-5d |\n", 
-                   dest_ip, gw_ip, mask_ip, table[i].interface, table[i].used);
-        }
+        printf("|%-16s | %-16s | %-16s | %-16s | %-5d |\n", 
+                dest_ip, gw_ip, mask_ip, table[i].interface);
     }
 }
