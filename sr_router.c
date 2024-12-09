@@ -196,10 +196,26 @@ void sr_handlepacket(struct sr_instance *sr,
                 // Extract details
                 uint32_t source_router_id = sr->ospf_subsys->router->router_id;
                 uint32_t neighbor_id = pwospf_hdr->router_id;
-                uint32_t subnet = sr_get_interface(sr, interface)->ip; // Already in host byte order
-                uint32_t mask = sr_get_interface(sr, interface)->mask;
+                struct sr_if* this_iface = sr_get_interface(sr, interface);
+                uint32_t subnet = this_iface->ip & this_iface->mask; // Already in host byte order
+                uint32_t mask = this_iface->mask;
+
+                struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
+                while(interfaces) {
+                    printf("no!!!!!!!!!!!!!!!!!\n");
+                    // uint32_t this_subnet = interfaces->iface->ip * interfaces->iface->mask;
+                    if (interfaces->iface == this_iface) {
+                        interfaces->last_hello_time = time(NULL);
+                        interfaces->neighbor_id = neighbor_id;
+                        interfaces->neighbor_ip = ip_hdr->ip_src.s_addr;
+                        printf("*************Yeah!!!!!!!!!!!\n");
+                        break;
+                    }
+                    interfaces = interfaces->next;
+                }
+
                 update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, interface);
-                create_routing_table(sr, sr->ospf_subsys->router->router_id);
+                create_routing_table(sr->ospf_subsys->router->router_id);
                 link_static_and_dynamic_tables(sr);
                 // print_routing_table(dynamic_routing_table, 6);
                 // sr_print_routing_table(sr);
@@ -227,37 +243,56 @@ void sr_handlepacket(struct sr_instance *sr,
                 // printf("\n");
                 // printf("Sequence Number: %d\n\n",sequence_number);
                 // printf("TTL Number: %d\n\n",ttl);
-                
-                if(is_valid_sequence(sr, source_router_id, sequence_number)){
-                    // printf("Is Valid Sequence\n");
-                    clear_lsdb(source_router_id);
-                    for (uint32_t i = 0; i < num_adv; i++) {
-                        struct lsu_adv *current_adv = &lsu_a[i];
-                        uint32_t subnet = (current_adv->subnet);
-                        uint32_t mask = (current_adv->mask);
-                        uint32_t neighbor_id = (current_adv->router_id);
-                        update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, " ");
-                        // printf("num_adv: %d \n", num_adv);
-                    }
-                    create_routing_table(sr, sr->ospf_subsys->router->router_id);
-                    link_static_and_dynamic_tables(sr);
-                    struct sr_if *iface = sr->if_list;
-                    populate_ip_header(packet);
-                    while (iface) {
-                        uint8_t *new_packet = malloc(sizeof(uint8_t) * len);
-                        if (new_packet == NULL) {
-                            fprintf(stderr, "Failed to allocate memory for packet\n");
-                            return;
-                        }
-                        memcpy(new_packet, packet, len);
-                        sr_send_packet(sr, new_packet, len, iface->name);
-                        iface = iface->next;
-                    }
+                if(source_router_id==sr->ospf_subsys->router->router_id){
+                    printf("Rec'd self LSU\n");
                 }
-                // else{
-                //     // printf("Not a valid sequence\n");
-                // }
-                // print_sequence_table(seq, MAX_ROUTERS);
+                else{
+                    if(is_valid_sequence(source_router_id, sequence_number)){
+                        // printf("Is Valid Sequence\n");
+                        printf("num_adv: %d \n", num_adv);
+                        clear_lsdb(source_router_id);
+                        for (uint32_t i = 0; i < num_adv; i++) {
+                            struct lsu_adv *current_adv = &lsu_a[i];
+                            uint32_t subnet = (current_adv->subnet);
+                            uint32_t mask = (current_adv->mask);
+                            uint32_t neighbor_id = (current_adv->router_id);
+
+                            printf("source: ");
+                            print_ip_address(source_router_id);
+                            printf("\n");
+                            printf("neighbor: ");
+                            print_ip_address(neighbor_id);
+                            printf("\n");
+
+
+                            update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, " ");
+                            
+                        }
+                        create_routing_table(sr->ospf_subsys->router->router_id);
+                        link_static_and_dynamic_tables(sr);
+                        struct sr_if *iface = sr->if_list;
+                        populate_ip_header(packet);
+                        while (iface) {
+                            uint8_t *new_packet = malloc(sizeof(uint8_t) * len);
+                            if (new_packet == NULL) {
+                                fprintf(stderr, "Failed to allocate memory for packet\n");
+                                return;
+                            }
+                            memcpy(eth_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
+                            memcpy(new_packet, packet, len);
+                            sr_send_packet(sr, new_packet, len, iface->name);
+                            iface = iface->next;
+                        }
+                    }
+                    else{
+                        printf("source: ");
+                        print_ip_address(source_router_id);
+                        printf("\n");
+                        printf("Not a valid sequence\n");
+                    }
+                    // print_sequence_table(seq, MAX_ROUTERS);
+                }
+
             }
             else{
                 populate_ip_header(packet);
