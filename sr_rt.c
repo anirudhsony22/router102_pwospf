@@ -119,6 +119,7 @@ void sr_add_rt_entry(struct sr_instance* sr, struct in_addr dest,
     rt_walker->dest = dest;
     rt_walker->gw   = gw;
     rt_walker->mask = mask;
+    rt_walker->dynamic = 0;
     strncpy(rt_walker->interface,if_name,SR_IFACE_NAMELEN);
 
 } /* -- sr_add_entry -- */

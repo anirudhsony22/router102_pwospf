@@ -64,7 +64,7 @@ void* pwospf_run_thread(void* arg)
         // printf("Counter: %d\n", counter);
         pthread_mutex_unlock(&PW_LOCK);
         // pthread_mutex_unlock(&sr->ospf_subsys->lock);
-        // print_routing_table(sr);
+        print_routing_table(sr);
         print_link_state_table();
         sleep(HELLO_INTERVAL); /* 10 seconds as defined earlier */
     };
@@ -358,6 +358,9 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         num_ads++;
         pw_iface = pw_iface->next;
     }
+    if(sr->routing_table!=NULL && sr->routing_table->dynamic!=1){
+        num_ads++;
+    }
 
     // Allocate memory for the LSU packet
     unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + num_ads * sizeof(lsu_adv_t);
@@ -397,6 +400,14 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         advertisements[ad_index].router_id = pw_iface->neighbor_id; // Neighbor router ID
         ad_index++;
         pw_iface = pw_iface->next;
+    }
+    printf("Before Entry\n");
+    
+    if(sr->routing_table!=NULL && sr->routing_table->dynamic!=1){
+        advertisements[ad_index].subnet = 0; // Subnet calculation
+        advertisements[ad_index].mask = 0;
+        advertisements[ad_index].router_id = sr->routing_table->gw.s_addr; // Neighbor router ID
+        ad_index++;
     }
 
     // Compute checksum

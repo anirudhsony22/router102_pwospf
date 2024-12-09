@@ -444,6 +444,8 @@ void handle_ip(uint8_t *packet,
     int protocol = ip_hdr->ip_p;
     if (protocol==IPPROTO_ICMP){
 
+        printf("Rec'd ICMP\n");
+
         struct icmp* icmphdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
         struct sr_if *iface = sr_get_interface(sr, interface);
 
@@ -476,6 +478,7 @@ void handle_ip(uint8_t *packet,
 
             memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
             memcpy(eth_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
+            printf("Sending back the ICMP: %s\n", interface);
             sr_send_packet(sr, packet, len, interface);
             return;
         }

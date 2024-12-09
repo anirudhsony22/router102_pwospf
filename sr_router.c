@@ -176,7 +176,7 @@ void sr_handlepacket(struct sr_instance *sr,
             handle_arp(sr, packet, len, interface);
             break;
         case ETHERTYPE_IP:
-            // printf("IP Rec'd\n");
+            printf("IP Rec'd\n");
             if (!is_valid_ip_packet(packet)) // also decreasing ttl
             {
                 print_drop();
