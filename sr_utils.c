@@ -479,6 +479,9 @@ void handle_ip(uint8_t *packet,
             memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
             memcpy(eth_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
             printf("Sending back the ICMP: %s\n", interface);
+            print_packet_details(packet);
+            print_icmp_header(icmphdr);
+
             sr_send_packet(sr, packet, len, interface);
             return;
         }
@@ -708,3 +711,48 @@ void* ipcache_thread(void* sr_arg) {
 
 // struct ipcache* new_en = create_ipcache_entry(packet, len, interface, nxthop.s_addr, NULL, next_interface);
 // buffer_ip_packet(new_en);
+
+void print_ethernet_header(struct sr_ethernet_hdr* eth_hdr) {
+    printf("Destination MAC: %s\n", eth_hdr->ether_dhost);
+    printf("Source MAC: %s\n", eth_hdr->ether_shost);
+    printf("Type: %hu\n", ntohs(eth_hdr->ether_type));
+}
+
+/* Helper function to print IP headers */
+void print_ip_header(struct ip* ip_hdr) {
+    char src_ip[INET_ADDRSTRLEN];
+    char dst_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(ip_hdr->ip_src), src_ip, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &(ip_hdr->ip_dst), dst_ip, INET_ADDRSTRLEN);   
+    printf("\n--- IP Header ---\n");
+    printf("Version: %d\n", ip_hdr->ip_v);
+    printf("Header Length: %d bytes\n", ip_hdr->ip_hl * 4);
+    printf("Type of Service: %d\n", ip_hdr->ip_tos);
+    printf("Total Length: %d\n", ntohs(ip_hdr->ip_len));
+    printf("ID: %d\n", ntohs(ip_hdr->ip_id));
+    printf("Fragment Offset: %d\n", ntohs(ip_hdr->ip_off));
+    printf("TTL: %d\n", ip_hdr->ip_ttl);
+    printf("Protocol: %d\n", ip_hdr->ip_p);
+    printf("Checksum: %d\n", ntohs(ip_hdr->ip_sum));
+    printf("Source IP: %s\n", src_ip);
+    printf("Destination IP: %s\n", dst_ip);
+}
+
+/* General function to print packet details */
+void print_packet_details(uint8_t* packet) {
+    struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+    struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+    printf("\n Src MAC: ");
+    print_mac_address("", eth_hdr->ether_shost);
+    printf(" Dest MAC: ");
+    print_mac_address("", eth_hdr->ether_dhost);
+    printf("\n");
+    print_ip_header(ip_hdr);
+}
+
+void print_icmp_header(struct icmp* icmphdr) {
+    printf("\n--- ICMP Header ---\n");
+    printf("Type: %d\n", icmphdr->type);
+    printf("Code: %d\n", icmphdr->code);
+    printf("Checksum: %d\n", ntohs(icmphdr->checksum));
+}

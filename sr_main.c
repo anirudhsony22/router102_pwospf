@@ -159,15 +159,15 @@ int main(int argc, char **argv)
         sr_load_rt_wrap(&sr, "rtable.vrhost");
     }
 
+    init_lsdb();
+    init_seq();
     /* call router init (for arp subsystem etc.) */
     sr_init(&sr);
 
     /* -- whizbang main loop ;-) */
-    init_lsdb();
-    init_seq();
     while( sr_read_from_server(&sr) == 1);
     // pwospf_init(&sr);
-    sr_set_rid(&sr);
+    // sr_set_rid(&sr);
     printf("Initiated pwospf\n\n");
     sr_print_if_list(&sr);
 

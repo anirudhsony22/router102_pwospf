@@ -65,7 +65,6 @@ struct sr_instance
     /* -- pwospf subsystem -- */
     struct pwospf_subsys* ospf_subsys;
     struct lsdb* database;
-    uint32_t rid;
 };
 
 /* -- sr_main.c -- */

@@ -216,7 +216,7 @@ void sr_handlepacket(struct sr_instance *sr,
 
                 update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, interface);
                 create_routing_table(sr->ospf_subsys->router->router_id);
-                link_static_and_dynamic_tables(sr);
+                // link_static_and_dynamic_tables(sr);
                 // print_routing_table(dynamic_routing_table, 6);
                 // sr_print_routing_table(sr);
                 // print_routing_table(sr);
@@ -239,10 +239,6 @@ void sr_handlepacket(struct sr_instance *sr,
                 uint32_t num_adv = lsu_h->num_ads;
                 print_ip_address(pwospf_hdr->router_id);
                 printf("\n");
-                // print_lsu_packet(lsu_h, lsu_a, 4);
-                // printf("\n");
-                // printf("Sequence Number: %d\n\n",sequence_number);
-                // printf("TTL Number: %d\n\n",ttl);
                 if(source_router_id==sr->ospf_subsys->router->router_id){
                     printf("Rec'd self LSU\n");
                 }
@@ -269,7 +265,7 @@ void sr_handlepacket(struct sr_instance *sr,
                             
                         }
                         create_routing_table(sr->ospf_subsys->router->router_id);
-                        link_static_and_dynamic_tables(sr);
+                        // link_static_and_dynamic_tables(sr);
                         struct sr_if *iface = sr->if_list;
                         populate_ip_header(packet);
                         while (iface) {

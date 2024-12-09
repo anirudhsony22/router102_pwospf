@@ -51,52 +51,19 @@ void* pwospf_run_thread(void* arg)
             pw_iface = pw_iface->next;
         }
         invalidate_expired_links(sr->ospf_subsys->router->router_id, 12, sr);
-        // invalidate_expired_links(&sr->database, sr->rid, HELLO_TIMEOUT/5);
-        /* Unlock the PWOSPF subsystem */
-        // printf("After UnLock");
-        /* Sleep for the Hello interval */
-        // printf("pwospf subsystem sleeping\n");
-        // print_link_state_table();
         if(counter%2==0){
             send_pwospf_lsu(sr);
         }
         counter++;
-        // printf("Counter: %d\n", counter);
         pthread_mutex_unlock(&PW_LOCK);
-        // pthread_mutex_unlock(&sr->ospf_subsys->lock);
         print_routing_table(sr);
-        print_link_state_table();
         sleep(HELLO_INTERVAL); /* 10 seconds as defined earlier */
     };
     printf("#############################Exitted While1\n");
     return NULL;
 } /* -- run_ospf_thread -- */
 
-void print_ip(uint32_t ip) {
-    ip=htonl(ip);
-    printf("%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
-}
-void print_link_state_table() {
-    printf("-------------------------------------------------------------\n");
-    printf("| Source Router | Neighbor Router | Subnet       | Mask       | Last Hello Time       | State  | Color |\n");
-    printf("-------------------------------------------------------------\n");
 
-    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
-        // if (ls_db[i].state == 0 && ls_db[i].source_router_id == 0) continue; // Skip empty or invalid entries
-        print_ip(ls_db[i].source_router_id);
-        printf(" | ");
-        print_ip(ls_db[i].neighbor_router_id);
-        printf(" | ");
-        print_ip(ls_db[i].subnet);
-        printf(" | ");
-        print_ip(ls_db[i].mask);
-        printf(" | %19ld | %6s | %5u |\n", 
-               ls_db[i].last_hello_time,
-               ls_db[i].state ? "Valid" : "Invalid",
-               ls_db[i].color);
-    }
-    printf("-------------------------------------------------------------\n");
-}
 /*---------------------------------------------------------------------
  * Method: pwospf_init(..)
  *
@@ -109,8 +76,6 @@ void print_link_state_table() {
 int pwospf_init(struct sr_instance* sr)
 {
     assert(sr);
-    // printf("PWOSPF Init\n");
-
     sr->ospf_subsys = (struct pwospf_subsys*)malloc(sizeof(struct pwospf_subsys));
     assert(sr->ospf_subsys);
     pthread_mutex_init(&(sr->ospf_subsys->lock), 0);
@@ -133,7 +98,6 @@ int pwospf_init(struct sr_instance* sr)
 
     /* Set Router ID to IP address of the first interface */
     if (sr->if_list) {
-        // printf("Interface Found\n");
         sr->ospf_subsys->router->router_id = sr->if_list->ip;
     } else {
         printf("No interface\n");
@@ -181,51 +145,6 @@ int pwospf_init(struct sr_instance* sr)
     return cnt < 3 ? 0 : 1; /* success */
 } /* -- pwospf_init -- */
 
-/* Set the Router ID */
-void sr_set_rid(struct sr_instance *sr) {
-    assert(sr);
-    if (sr->if_list) {
-        sr->rid = sr->if_list->addr; // Use IP of the first interface
-        printf("Router ID (RID) set to: %u\n", sr->rid);
-    } else {
-        sr->rid = 0; // Invalid RID
-        printf("No interfaces available. RID set to 0.\n");
-    }
-}
-/* Initialize the link state database (lsdb) */
-// void init_lsdb(lsdb_t *lsdb) {
-//     lsdb->count = 0;
-//     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
-//         lsdb->entries[i].state = 0; // Mark all entries as invalid
-//     }
-//     printf("Link State Database initialized.\n");
-// }
-/*---------------------------------------------------------------------
- * Method: pwospf_lock
- *
- * Lock mutex associated with pwospf_subsys
- *
- *---------------------------------------------------------------------*/
-
-// void pwospf_lock(struct pwospf_subsys* subsys)
-// {
-//     if ( pthread_mutex_lock(&subsys->lock) )
-//     { assert(0); }
-// } /* -- pwospf_lock -- */
-
-/*---------------------------------------------------------------------
- * Method: pwospf_unlock
- *
- * Unlock mutex associated with pwospf subsystem
- *
- *---------------------------------------------------------------------*/
-
-// void pwospf_unlock(struct pwospf_subsys* subsys)
-// {
-//     if ( pthread_mutex_unlock(&subsys->lock) )
-//     { assert(0); }
-// } /* -- pwospf_unlock -- */
-
 /*---------------------------------------------------------------------
  * Method: send_pwospf_hello
  *
@@ -233,17 +152,13 @@ void sr_set_rid(struct sr_instance *sr) {
  *
  *---------------------------------------------------------------------*/
 void send_pwospf_hello(struct sr_instance *sr, struct pwospf_if *pw_iface) {
-    // printf("Send Hello Initiated\n");
-    /* Total PWOSPF packet length */
     unsigned int pwospf_len = sizeof(pwospf_hdr_t) + sizeof(pwospf_hello_t);
     
-    /* Allocate memory for the PWOSPF packet */
     uint8_t *pwospf_packet = (uint8_t *)malloc(pwospf_len);
     if (!pwospf_packet) {
         fprintf(stderr, "Memory allocation failed for PWOSPF packet\n");
         return;
     }
-    // printf("Send Hello Initiated 2\n");
     memset(pwospf_packet, 0, pwospf_len);
     
     /* PWOSPF Header */
@@ -872,33 +787,6 @@ void link_static_and_dynamic_tables(struct sr_instance* sr) {
     else{
         rt_walker->next = (struct sr_rt*)&dynamic_routing_table[0];
     }
-    // if (rt_walker == NULL || rt_walker->dynamic==1) {
-    //     sr->routing_table = (struct sr_rt*)&dynamic_routing_table[0];
-    // } else {
-    //     while (rt_walker->next && rt_walker->next->dynamic==0) {
-    //         rt_walker = rt_walker->next;
-    //     }
-    //     rt_walker->next = (struct sr_rt*)&dynamic_routing_table[0];
-    // }
-}
-
-// void print_routing_table(struct sr_rt2 table[], int size) {
-//     printf("Routing Table:\n");
-//     printf("|%-16s | %-16s | %-16s | %-16s |\n", "Destination", "Next Hop", "Mask", "Interface");
-//     printf("--------------------------------------------------------------------------------\n");
-//     for (int i = 0; i < size; i++) {
-//         char dest_ip[INET_ADDRSTRLEN];
-//         char gw_ip[INET_ADDRSTRLEN];
-//         char mask_ip[INET_ADDRSTRLEN];
-
-//         inet_ntop(AF_INET, &table[i].dest, dest_ip, INET_ADDRSTRLEN);
-//         inet_ntop(AF_INET, &table[i].gw, gw_ip, INET_ADDRSTRLEN);
-//         inet_ntop(AF_INET, &table[i].mask, mask_ip, INET_ADDRSTRLEN);
-
-//         printf("|%-16s | %-16s | %-16s | %-16s | %-5d |\n", 
-//                 dest_ip, gw_ip, mask_ip, table[i].interface);
-//     }
-// }
 
 
 void print_routing_table(struct sr_instance* sr) {
@@ -929,4 +817,30 @@ void print_routing_table(struct sr_instance* sr) {
         // Move to the next entry
         current = current->next;
     }
+}
+
+void print_ip(uint32_t ip) {
+    ip=htonl(ip);
+    printf("%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
+}
+void print_link_state_table() {
+    printf("-------------------------------------------------------------\n");
+    printf("| Source Router | Neighbor Router | Subnet       | Mask       | Last Hello Time       | State  | Color |\n");
+    printf("-------------------------------------------------------------\n");
+
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+        // if (ls_db[i].state == 0 && ls_db[i].source_router_id == 0) continue; // Skip empty or invalid entries
+        print_ip(ls_db[i].source_router_id);
+        printf(" | ");
+        print_ip(ls_db[i].neighbor_router_id);
+        printf(" | ");
+        print_ip(ls_db[i].subnet);
+        printf(" | ");
+        print_ip(ls_db[i].mask);
+        printf(" | %19ld | %6s | %5u |\n", 
+               ls_db[i].last_hello_time,
+               ls_db[i].state ? "Valid" : "Invalid",
+               ls_db[i].color);
+    }
+    printf("-------------------------------------------------------------\n");
 }
