@@ -29,39 +29,32 @@ void send_pwospf_hello(struct sr_instance *sr, struct pwospf_if *pw_iface);
 static
 void* pwospf_run_thread(void* arg)
 {
+    printf("In the pwospf_run_thread \n");
     struct sr_instance* sr = (struct sr_instance*)arg;
+    printf("SR Instance \n");
     struct pwospf_router* router = sr->ospf_subsys->router;
+    printf("pwospf \n");
     int counter=0;
 
     while(1)
     {
-        // printf("pwospf subsystem awake\n");
-        /* Lock the PWOSPF subsystem */
-        pwospf_lock(sr->ospf_subsys);
-        /* Iterate over all PWOSPF interfaces and send Hello packets */
         struct pwospf_if* pw_iface = router->interfaces;
         while (pw_iface) {
-            /* Send Hello packet on this interface */
             send_pwospf_hello(sr, pw_iface);
             printf("Sent Hello Packet %s\n", pw_iface->iface->name);
-            /* Update last_hello_time to current time */
             pw_iface->last_hello_time = time(NULL);
             pw_iface = pw_iface->next;
         }
         invalidate_expired_links(sr->ospf_subsys->router->router_id, 12, sr);
-        // invalidate_expired_links(&sr->database, sr->rid, HELLO_TIMEOUT/5);
-        /* Unlock the PWOSPF subsystem */
-        pwospf_unlock(sr->ospf_subsys);
-        /* Sleep for the Hello interval */
-        // printf("pwospf subsystem sleeping\n");
-        print_link_state_table();
-        if(counter%1==0){
-            //Todo: Send LSU
+        if(counter%2==0){
             send_pwospf_lsu(sr);
         }
         counter++;
+        // printf("Counter: %d\n", counter);
+        // pthread_mutex_unlock(&sr->ospf_subsys->lock);
         sleep(HELLO_INTERVAL); /* 10 seconds as defined earlier */
     };
+    printf("#############################Exitted While1\n");
     return NULL;
 } /* -- run_ospf_thread -- */
 
@@ -170,25 +163,7 @@ int pwospf_init(struct sr_instance* sr)
         iface = iface->next;
         cnt++;
     }
-
-    /* -- start thread subsystem -- */
-    printf("Creating thread for hello packet\n");
-    if( pthread_create(&sr->ospf_subsys->thread, 0, pwospf_run_thread, sr)) {
-        perror("pthread_create");
-        /* Handle cleanup */
-        /* Free interfaces */
-        struct pwospf_if* current = sr->ospf_subsys->router->interfaces;
-        printf("Freeing up space in thread started\n");
-        while (current) {
-            struct pwospf_if* temp = current;
-            current = current->next;
-            free(temp);
-        }
-        free(sr->ospf_subsys->router);
-        free(sr->ospf_subsys);
-        return 0;
-    }
-
+    // create_hello_thread(sr);
     return cnt < 3 ? 0 : 1; /* success */
 } /* -- pwospf_init -- */
 
@@ -340,6 +315,7 @@ void send_pwospf_hello(struct sr_instance *sr, struct pwospf_if *pw_iface) {
     
     // printf("Send Hello Initiated 9\n");
     /* Send the packet */
+    // printf("####################At VNS Function Send\n");
     sr_send_packet(sr, ether_frame, ether_len, pw_iface->iface->name);
     // printf("Send Hello Initiated 10\n");
     
@@ -359,7 +335,7 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         return;
     }
 
-    pthread_mutex_lock(&sr->ospf_subsys->lock); // Ensure thread safety
+    // pthread_mutex_lock(&sr->ospf_subsys->lock); // Ensure thread safety
 
     // Count the number of valid interfaces (advertisements)
     int num_ads = 0;
@@ -374,7 +350,6 @@ void send_pwospf_lsu(struct sr_instance *sr) {
     uint8_t *lsu_packet = (uint8_t *)malloc(lsu_len);
     if (!lsu_packet) {
         fprintf(stderr, "Memory allocation failed for LSU packet\n");
-        pthread_mutex_unlock(&sr->ospf_subsys->lock);
         return;
     }
     memset(lsu_packet, 0, lsu_len);
@@ -393,7 +368,7 @@ void send_pwospf_lsu(struct sr_instance *sr) {
     // Construct LSU header
     lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
     lsu_hdr->sequence = router->sequence_number++;
-    printf("Send side Sequence: %d\n",lsu_hdr->sequence);
+    // printf("Send side Sequence: %d\n",lsu_hdr->sequence);
     lsu_hdr->ttl = DEFAULT_LSU_TTL;
     lsu_hdr->num_ads = num_ads;
 
@@ -423,7 +398,7 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         if (!ip_packet) {
             fprintf(stderr, "Memory allocation failed for IP packet\n");
             free(lsu_packet);
-            pthread_mutex_unlock(&sr->ospf_subsys->lock);
+            // pthread_mutex_unlock(&sr->ospf_subsys->lock);
             return;
         }
         memset(ip_packet, 0, ip_len);
@@ -452,7 +427,7 @@ void send_pwospf_lsu(struct sr_instance *sr) {
             fprintf(stderr, "Memory allocation failed for Ethernet frame\n");
             free(lsu_packet);
             free(ip_packet);
-            pthread_mutex_unlock(&sr->ospf_subsys->lock);
+            // pthread_mutex_unlock(&sr->ospf_subsys->lock);
             return;
         }
         memset(ether_frame, 0, ether_len);
@@ -484,30 +459,53 @@ void send_pwospf_lsu(struct sr_instance *sr) {
     }
 
     free(lsu_packet);
-    pthread_mutex_unlock(&sr->ospf_subsys->lock);
+    // pthread_mutex_unlock(&sr->ospf_subsys->lock);
+}
+
+void create_hello_thread(struct sr_instance *sr){
+    /* -- start thread subsystem -- */
+    printf("Creating thread for hello packet\n");
+    if( pthread_create(&sr->ospf_subsys->thread, 0, pwospf_run_thread, sr)) {
+        perror("pthread_create");
+        /* Handle cleanup */
+        /* Free interfaces */
+        struct pwospf_if* current = sr->ospf_subsys->router->interfaces;
+        printf("Freeing up space in thread started\n");
+        while (current) {
+            struct pwospf_if* temp = current;
+            current = current->next;
+            free(temp);
+        }
+        free(sr->ospf_subsys->router);
+        free(sr->ospf_subsys);
+        return 0;
+    }
 }
 
 void* populate_pwospf(void* sr_arg) {
-    struct sr_instance *sr = sr_arg;
+    struct sr_instance *sr = (struct sr_instance *)sr_arg;
 
-    while (1) {
+    while(1) {
         // printf("pwospf_init Thread is running...\n");
         int all_good = pwospf_init(sr);
 
         if (all_good == 1) {
-            printf("All Good################");
+            printf("All Good################\n");
+            create_hello_thread(sr);
+            printf("After create hello thread");
             struct sr_if* iface = sr->if_list;
             uint32_t source_router_id = sr->ospf_subsys->router->router_id;
             while (iface) {
-                update_lsdb(source_router_id, 0, iface->ip & iface->mask, iface->mask, 1);
-                printf("Update IFACE\n");
+                update_lsdb(source_router_id, 0, iface->ip & iface->mask, iface->mask, 1, iface->name);
+                // printf("Update IFACE\n");
                 iface = iface->next;
             }
+            create_routing_table(sr, sr->ospf_subsys->router->router_id);
             break;
         }
         // build_routing_table_in_place(sr->ospf_subsys->router->router_id);
-        create_routing_table(sr->ospf_subsys->router->router_id);
-        print_routing_table(dynamic_routing_table, 6);
+        // print_routing_table(sr);
+        // print_routing_table(dynamic_routing_table, 6);
         sleep(1);
     }
     return NULL;
@@ -542,8 +540,9 @@ void handle_hello(struct sr_instance *sr,
     }
 }
 
-void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint32_t mask, int is_current_id) {
-    printf("Entered Update LSDB\n");
+void update_lsdb(struct sr_instance *sr, uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint32_t mask, int is_current_id, char *ifname) {
+    // printf("Entered Update LSDB\n");
+    pthread_mutex_lock(&sr->ospf_subsys->lock);
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
         if (ls_db[i].source_router_id == source_id && (ls_db[i].subnet & ls_db[i].mask) == (subnet & mask)) {
             if(ls_db[i].neighbor_router_id==0 && is_current_id==1){
@@ -553,12 +552,14 @@ void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint
             ls_db[i].subnet = subnet;
             ls_db[i].last_hello_time = time(NULL); // Update timer
             ls_db[i].mask = mask;
-            ls_db[i].state = 1; 
+            ls_db[i].state = 1;
+            strncpy(ls_db[i].interface, ifname, SR_IFACE_NAMELEN);
+            ls_db[i].interface[SR_IFACE_NAMELEN - 1] = '\0'; // Ensure null termination
             // printf("Updated hahaha\n");
             return;
         }
     }
-    printf("No mathcing entry, hence creating new one\n");
+    // printf("No mathcing entry, hence creating new one\n");
     for (int i=0; i<MAX_LINK_STATE_ENTRIES; i++){
         // printf("The state: %d \n\n",ls_db[i].state);
         if(ls_db[i].state==0){
@@ -572,17 +573,20 @@ void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint
             return;
         }
     }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
 }
 
-void clear_lsdb(uint32_t source_id){
+void clear_lsdb(struct sr_instance *sr, uint32_t source_id){
+    pthread_mutex_lock(&sr->ospf_subsys->lock);
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
         if(ls_db[i].source_router_id == source_id){
             ls_db[i].state = 0; //Invalidate it
         }
     }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
 }
 
-void init_lsdb(){
+void init_lsdb(struct sr_instance *sr){
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
         ls_db[i].state = 0;
     }
@@ -592,6 +596,8 @@ void invalidate_expired_links(uint32_t current_router_id, time_t timeout, struct
     time_t now = time(NULL);
     // printf("In the invalidate loop\n");
     // print_ip_address(ntohl(current_router_id));
+    int change=0;
+    pthread_mutex_lock(&sr->ospf_subsys->lock);
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
         if (ls_db[i].state == 1 && 
             (ls_db[i].source_router_id == current_router_id) && 
@@ -600,15 +606,19 @@ void invalidate_expired_links(uint32_t current_router_id, time_t timeout, struct
 
             uint32_t prev_id = ls_db[i].neighbor_router_id;
             ls_db[i].neighbor_router_id = 0;
+            change=1;
 
             printf("Invalidating the links of router: \n");
-            send_pwospf_lsu(sr);
             //Todo: Send LSU
             // print_ip(ls_db[i].source_router_id);
             // printf("neighbor id: \n");
             // print_ip(prev_id);
             // printf("\n");
         }
+    }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
+    if(change){
+        send_pwospf_lsu(sr);
     }
 }
 
@@ -618,7 +628,8 @@ void init_seq(){
     }
 }
 
-int is_valid_sequence(uint32_t source, uint32_t check){
+int is_valid_sequence(struct sr_instance *sr, uint32_t source, uint32_t check){
+    pthread_mutex_lock(&sr->ospf_subsys->lock);
     for (int i = 0; i < MAX_ROUTERS; i++) {
         if (seq[i].source_router_id == source) {
             if(seq[i].last_sequence_num>=check){
@@ -635,6 +646,7 @@ int is_valid_sequence(uint32_t source, uint32_t check){
             return 1;
         }
     }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
 }
 
 void print_sequence_table(sequence_table_entry_t *seq, int size) {
@@ -724,13 +736,15 @@ void print_all_headers(struct sr_ethernet_hdr *eth_hdr, struct ip *ip_hdr,
 }
 
 
-void add_routing_entry(uint32_t next_hop, uint32_t subnet, uint32_t mask, int *rt_index) {
+void add_routing_entry(uint32_t next_hop, uint32_t subnet, uint32_t mask, char *interface[SR_IFACE_NAMELEN], int *rt_index) {
     if (*rt_index < 15) {
         dynamic_routing_table[*rt_index].dest.s_addr = subnet;
         dynamic_routing_table[*rt_index].gw.s_addr = next_hop;
         dynamic_routing_table[*rt_index].mask.s_addr = mask;
         dynamic_routing_table[*rt_index].next = NULL;
         dynamic_routing_table[*rt_index].dynamic = 1;
+        strncpy(dynamic_routing_table[*rt_index].interface, interface, SR_IFACE_NAMELEN);
+        dynamic_routing_table[*rt_index].interface[SR_IFACE_NAMELEN - 1] = '\0';
         if (*rt_index > 0) {
             dynamic_routing_table[*rt_index - 1].next = &dynamic_routing_table[*rt_index];
         }
@@ -740,15 +754,13 @@ void add_routing_entry(uint32_t next_hop, uint32_t subnet, uint32_t mask, int *r
     }
 }
 
-void create_routing_table(uint32_t my_router_id) {
+void create_routing_table(struct sr_instance *sr, uint32_t my_router_id) {
+    pthread_mutex_lock(&sr->ospf_subsys->lock);
     struct queue qt[MAX_LINK_STATE_ENTRIES];
     int rear = 0;
     int front = 0;
     int rt_index = 0; // Start index for routing table
 
-    // for (int i=0;i<15;i++){
-    //     dynamic_routing_table[i].used=0;
-    // }
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
         ls_db[i].color=WHITE;
     }
@@ -761,11 +773,14 @@ void create_routing_table(uint32_t my_router_id) {
             qt[rear].subnet = ls_db[i].subnet;
             qt[rear].mask = ls_db[i].mask;
             qt[rear].next_hop = ls_db[i].neighbor_router_id;
+            strncpy(qt[rear].interface, ls_db[i].interface, SR_IFACE_NAMELEN); // Copy interface name
+            qt[rear].interface[SR_IFACE_NAMELEN - 1] = '\0'; // Ensure null-termination
             rear++;
             add_routing_entry(
                 ls_db[i].neighbor_router_id, // Next hop is the neighbor itself
                 ls_db[i].subnet,             // Subnet of the link
                 ls_db[i].mask,               // Subnet mask
+                ls_db[i].interface,
                 &rt_index                     // Routing table index
             );
             ls_db[i].color = BLACK;
@@ -780,6 +795,9 @@ void create_routing_table(uint32_t my_router_id) {
         //Pop the element from the queue
         uint32_t current_router_id = qt[front].neighbor_router_id;
         uint32_t next_hop = qt[front].next_hop;
+        char ifname[SR_IFACE_NAMELEN];
+        strncpy(ifname, qt[front].interface, SR_IFACE_NAMELEN);
+        ifname[SR_IFACE_NAMELEN - 1] = '\0';
 
         for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
             if (ls_db[i].state == 1 && ls_db[i].source_router_id == current_router_id) {
@@ -804,12 +822,15 @@ void create_routing_table(uint32_t my_router_id) {
                     qt[rear].subnet = ls_db[i].subnet;
                     qt[rear].mask = ls_db[i].mask;
                     qt[rear].next_hop = next_hop;
+                    strncpy(qt[rear].interface, ls_db[i].interface, SR_IFACE_NAMELEN); // Safe string copy
+                    qt[rear].interface[SR_IFACE_NAMELEN - 1] = '\0'; // Ensure null termination
                     ls_db[i].color = BLACK;
                     rear++;
                     add_routing_entry(
                         next_hop,
                         ls_db[i].subnet,
                         ls_db[i].mask,
+                        ifname,
                         &rt_index                        
                     );
                     ls_db[i].color=BLACK;
@@ -823,12 +844,12 @@ void create_routing_table(uint32_t my_router_id) {
         }
         front++;
     }
-    
-
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
 }
 
 
 void link_static_and_dynamic_tables(struct sr_instance* sr) {
+    pthread_mutex_lock(&sr->ospf_subsys->lock);
     struct sr_rt* rt_walker = sr->routing_table;
     if (rt_walker == NULL || rt_walker->dynamic==1) {
         sr->routing_table = (struct sr_rt*)&dynamic_routing_table[0];
@@ -838,70 +859,54 @@ void link_static_and_dynamic_tables(struct sr_instance* sr) {
         }
         rt_walker->next = (struct sr_rt*)&dynamic_routing_table[0];
     }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock);
 }
 
-// void build_routing_table_in_place(uint32_t my_router_id) {
-//     int rt_index = 0;
-//     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
-//         ls_db[i].color = WHITE; // Mark all entries as unvisited
+// void print_routing_table(struct sr_rt2 table[], int size) {
+//     printf("Routing Table:\n");
+//     printf("|%-16s | %-16s | %-16s | %-16s |\n", "Destination", "Next Hop", "Mask", "Interface");
+//     printf("--------------------------------------------------------------------------------\n");
+//     for (int i = 0; i < size; i++) {
+//         char dest_ip[INET_ADDRSTRLEN];
+//         char gw_ip[INET_ADDRSTRLEN];
+//         char mask_ip[INET_ADDRSTRLEN];
+
+//         inet_ntop(AF_INET, &table[i].dest, dest_ip, INET_ADDRSTRLEN);
+//         inet_ntop(AF_INET, &table[i].gw, gw_ip, INET_ADDRSTRLEN);
+//         inet_ntop(AF_INET, &table[i].mask, mask_ip, INET_ADDRSTRLEN);
+
+//         printf("|%-16s | %-16s | %-16s | %-16s | %-5d |\n", 
+//                 dest_ip, gw_ip, mask_ip, table[i].interface);
 //     }
-//     uint32_t queue[MAX_LINK_STATE_ENTRIES];
-//     int front = 0, rear = 0;
-//     queue[rear++] = my_router_id;
-
-//     for (int i =0; i < 15; i++) {
-//         dynamic_routing_table[i].used = 0;
-//     }
-
-//     while (front < rear) {
-//         uint32_t current_router = queue[front++];
-//         for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
-//             if (ls_db[i].state == 1 && ls_db[i].source_router_id == current_router) {
-//                 uint32_t c_sn = ls_db[i].subnet;
-
-//                 int link_used = 0;
-//                 for (int j=0; j<MAX_LINK_STATE_ENTRIES;j++){
-//                     if(ls_db[i].subnet == c_sn &&
-//                         ls_db[i].state == 1 && 
-//                         ls_db[i].color==BLACK){
-//                             link_used=1;
-//                     }
-//                 }
-
-//                 if(link_used)continue;
-
-//                 uint32_t neighbor = ls_db[i].neighbor_router_id;
-//                 dynamic_routing_table[rt_index].dest.s_addr = ls_db[i].subnet;
-//                 dynamic_routing_table[rt_index].mask.s_addr = ls_db[i].mask;
-//                 dynamic_routing_table[rt_index].parent.s_addr = current_router;
-//                 dynamic_routing_table[rt_index].gw.s_addr = 0;
-
-//                 dynamic_routing_table[rt_index].used = 1;
-
-//                 rt_index++;
-//                 ls_db[i].color = BLACK;
-//                 queue[rear++] = neighbor;
-//             }
-//         }
-//     }
+// }
 
 
-    // 
-
-void print_routing_table(struct sr_rt2 table[], int size) {
+void print_routing_table(struct sr_instance* sr) {
+    struct sr_rt* current = sr->routing_table;
     printf("Routing Table:\n");
-    printf("|%-16s | %-16s | %-16s | %-16s |\n", "Destination", "Next Hop", "Mask", "Interface");
-    printf("--------------------------------------------------------------------------------\n");
-    for (int i = 0; i < size; i++) {
+    printf("|%-16s | %-16s | %-16s | %-16s | %-5s |\n", 
+           "Destination", "Gateway", "Mask", "Interface", "Dynamic");
+    printf("--------------------------------------------------------------------------------------\n");
+
+    while (current != NULL) {
         char dest_ip[INET_ADDRSTRLEN];
         char gw_ip[INET_ADDRSTRLEN];
         char mask_ip[INET_ADDRSTRLEN];
 
-        inet_ntop(AF_INET, &table[i].dest, dest_ip, INET_ADDRSTRLEN);
-        inet_ntop(AF_INET, &table[i].gw, gw_ip, INET_ADDRSTRLEN);
-        inet_ntop(AF_INET, &table[i].mask, mask_ip, INET_ADDRSTRLEN);
+        // Convert IP addresses to strings for printing
+        inet_ntop(AF_INET, &current->dest, dest_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &current->gw, gw_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &current->mask, mask_ip, INET_ADDRSTRLEN);
 
-        printf("|%-16s | %-16s | %-16s | %-16s | %-5d |\n", 
-                dest_ip, gw_ip, mask_ip, table[i].interface);
+        // Print the entry
+        printf("|%-16s | %-16s | %-16s | %-16s | %-5s |\n", 
+               dest_ip, 
+               gw_ip, 
+               mask_ip, 
+               current->interface, 
+               current->dynamic ? "Yes" : "No");
+
+        // Move to the next entry
+        current = current->next;
     }
 }

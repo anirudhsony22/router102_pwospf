@@ -18,6 +18,7 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <sys/time.h>
+#include "sr_if.h"
 
 #define PWOSPF_VERSION       2
 #define PWOSPF_TYPE_HELLO    1
@@ -103,6 +104,7 @@ typedef struct link_state_entry {
     uint32_t neighbor_router_id; //Big-endian
     uint32_t subnet;             //Big-endian
     uint32_t mask;               //Big-endian
+    char interface[SR_IFACE_NAMELEN];
     time_t last_hello_time;      
     uint8_t state;               
     uint8_t color;
@@ -121,6 +123,7 @@ typedef struct queue {
     uint32_t subnet;
     uint32_t mask;
     uint8_t color;
+    char interface[SR_IFACE_NAMELEN];
     uint32_t next_hop; // Extension to include next hop information
 } queue_entry_t;
 

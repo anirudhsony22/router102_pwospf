@@ -176,7 +176,7 @@ void sr_handlepacket(struct sr_instance *sr,
             handle_arp(sr, packet, len, interface);
             break;
         case ETHERTYPE_IP:
-            printf("IP Rec'd\n");
+            // printf("IP Rec'd\n");
             if (!is_valid_ip_packet(packet)) // also decreasing ttl
             {
                 print_drop();
@@ -184,13 +184,13 @@ void sr_handlepacket(struct sr_instance *sr,
             }
             if(is_hello(packet, len)){
                 printf("!!!!!!!!!!!!!!!!!!!!!#########################FFFFFFFFFFF Rec'd Hello **************************************\n");
-                printf("\n\n");
-                printf("Entering the read part:\n");
+                // printf("\n\n");
+                // printf("Entering the read part:\n");
                 struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
                 struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
                 struct pwospf_hdr *pwospf_hdr = (struct pwospf_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
                 struct pwospf_hello *hello = (struct pwospf_hello *)(pwospf_hdr + sizeof(pwospf_hdr_t));
-                printf("Done the read part:\n");
+                // printf("Done the read part:\n");
                 print_ip_address(pwospf_hdr->router_id);
                 printf("\n");
                 // Extract details
@@ -198,9 +198,12 @@ void sr_handlepacket(struct sr_instance *sr,
                 uint32_t neighbor_id = pwospf_hdr->router_id;
                 uint32_t subnet = sr_get_interface(sr, interface)->ip; // Already in host byte order
                 uint32_t mask = sr_get_interface(sr, interface)->mask;
-                update_lsdb(source_router_id, neighbor_id, subnet, mask);
-                create_routing_table(sr->ospf_subsys->router->router_id);
-                print_routing_table(dynamic_routing_table, 6);
+                update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, interface);
+                create_routing_table(sr, sr->ospf_subsys->router->router_id);
+                link_static_and_dynamic_tables(sr);
+                // print_routing_table(dynamic_routing_table, 6);
+                // sr_print_routing_table(sr);
+                // print_routing_table(sr);
             }
             else if(is_lsu(packet, len)){
                 printf("!!!!!!!!!!!!!!!!!!!!!#########################FFFFFFFFFFF Rec'd LSU **************************************\n");
@@ -218,14 +221,14 @@ void sr_handlepacket(struct sr_instance *sr,
                 uint32_t sequence_number = lsu_h->sequence;
                 uint8_t ttl = lsu_h->ttl;
                 uint32_t num_adv = lsu_h->num_ads;
-                // print_ip_address(pwospf_hdr->router_id);
-                // printf("\n");
+                print_ip_address(pwospf_hdr->router_id);
+                printf("\n");
                 // print_lsu_packet(lsu_h, lsu_a, 4);
                 // printf("\n");
                 // printf("Sequence Number: %d\n\n",sequence_number);
                 // printf("TTL Number: %d\n\n",ttl);
                 
-                if(is_valid_sequence(source_router_id, sequence_number)){
+                if(is_valid_sequence(sr, source_router_id, sequence_number)){
                     // printf("Is Valid Sequence\n");
                     clear_lsdb(source_router_id);
                     for (uint32_t i = 0; i < num_adv; i++) {
@@ -233,15 +236,27 @@ void sr_handlepacket(struct sr_instance *sr,
                         uint32_t subnet = (current_adv->subnet);
                         uint32_t mask = (current_adv->mask);
                         uint32_t neighbor_id = (current_adv->router_id);
-                        update_lsdb(source_router_id, neighbor_id, subnet, mask, 0);
+                        update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, " ");
                         // printf("num_adv: %d \n", num_adv);
                     }
-                    create_routing_table(sr->ospf_subsys->router->router_id);
-                    print_routing_table(dynamic_routing_table, 6);
+                    create_routing_table(sr, sr->ospf_subsys->router->router_id);
+                    link_static_and_dynamic_tables(sr);
+                    struct sr_if *iface = sr->if_list;
+                    populate_ip_header(packet);
+                    while (iface) {
+                        uint8_t *new_packet = malloc(sizeof(uint8_t) * len);
+                        if (new_packet == NULL) {
+                            fprintf(stderr, "Failed to allocate memory for packet\n");
+                            return;
+                        }
+                        memcpy(new_packet, packet, len);
+                        sr_send_packet(sr, new_packet, len, iface->name);
+                        iface = iface->next;
+                    }
                 }
-                else{
-                    printf("Not a valid sequence\n");
-                }
+                // else{
+                //     // printf("Not a valid sequence\n");
+                // }
                 // print_sequence_table(seq, MAX_ROUTERS);
             }
             else{

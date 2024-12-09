@@ -37,17 +37,17 @@ struct sr_rt
     int dynamic;
 };
 
-struct sr_rt2
-{
-    struct in_addr dest;
-    struct in_addr gw;
-    struct in_addr mask;
-    char   interface[SR_IFACE_NAMELEN];
-    struct sr_rt2* next;
-    int dynamic;
-};
+// struct sr_rt2
+// {
+//     struct in_addr dest;
+//     struct in_addr gw;
+//     struct in_addr mask;
+//     char   interface[SR_IFACE_NAMELEN];
+//     struct sr_rt2* next;
+//     int dynamic;
+// };
 
-struct sr_rt2 dynamic_routing_table[15];
+struct sr_rt dynamic_routing_table[15];
 
 
 

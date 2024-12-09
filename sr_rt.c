@@ -140,11 +140,11 @@ void sr_print_routing_table(struct sr_instance* sr)
 
     rt_walker = sr->routing_table;
     
-    sr_print_routing_entry(rt_walker);
+    // sr_print_routing_entry(rt_walker);
     while(rt_walker->next)
     {
         rt_walker = rt_walker->next; 
-        sr_print_routing_entry(rt_walker);
+        // sr_print_routing_entry(rt_walker);
     }
 
 } /* -- sr_print_routing_table -- */
