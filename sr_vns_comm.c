@@ -487,9 +487,9 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
                 fprintf(stderr,"Routing table not consistent with hardware\n");
                 return -1;
             }
+            pwospf_init(sr);
             printf(" <-- Ready to process packets --> \n");
             break;
-
             /* ---------------- VNS_RTABLE ---------------- */
         case VNS_RTABLE:
             if(!sr_handle_rtable(sr, (c_rtable*)buf))
