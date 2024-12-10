@@ -36,7 +36,7 @@
 struct sr_if;
 struct sr_rt;
 
-struct pwospf_subsys;
+
 
 /* ----------------------------------------------------------------------------
  * struct sr_instance
