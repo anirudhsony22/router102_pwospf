@@ -67,6 +67,9 @@ struct pwospf_subsys
     struct pwospf_router* router; 
     pthread_t thread;
     pthread_mutex_t lock;
+    pthread_mutex_t lock1;
+    pthread_mutex_t lock2;
+    pthread_mutex_t lock3;
 };
 
 int pwospf_init(struct sr_instance* sr);

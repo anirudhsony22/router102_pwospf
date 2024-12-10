@@ -39,6 +39,9 @@ int pwospf_init(struct sr_instance* sr)
 
     assert(sr->ospf_subsys);
     pthread_mutex_init(&(sr->ospf_subsys->lock), 0);
+    pthread_mutex_init(&(sr->ospf_subsys->lock1), 0);
+    pthread_mutex_init(&(sr->ospf_subsys->lock2), 0);
+    pthread_mutex_init(&(sr->ospf_subsys->lock3), 0);
     
 
     /* -- handle subsystem initialization here! -- */
@@ -136,7 +139,11 @@ void* pwospf_run_thread(void* arg)
             send_pwospf_hello(sr, iface);
             iface = iface->next;
         }
+
+
         //L3 Lock
+        if (pthread_mutex_lock(&sr->ospf_subsys->lock3)) assert(0); 
+        
         struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
         int change1=0;
         time_t now = time(NULL);
@@ -160,11 +167,14 @@ void* pwospf_run_thread(void* arg)
             printf("Change1 (Link Down) detected \n");
             //LSU Send
         }
+
+        if (pthread_mutex_unlock(&sr->ospf_subsys->lock3)) assert(0); 
         //L3 Unlock
 
 
         if(change1){
             //L2 Lock
+            if (pthread_mutex_lock(&sr->ospf_subsys->lock2)) assert(0); 
             //LSDB Update
             for(int i=0;i<track_count;i++){
                 update_lsdb(track_lsdb[track_count].source_router_id,
@@ -174,6 +184,8 @@ void* pwospf_run_thread(void* arg)
                             1,
                             track_lsdb[track_count].interface);
             }
+
+            if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
             //L2 Unlock
             
             //L1 Lock
