@@ -49,36 +49,34 @@ int pwospf_init(struct sr_instance* sr)
     sr->ospf_subsys->router->interfaces = NULL;
     sr->ospf_subsys->router->sequence_number = 0;
     sr->ospf_subsys->router->router_id = sr->if_list->ip;
-    // printf("%s", get_ipstr(sr->if_list->ip));
 
     struct sr_if* iface = sr->if_list;
     struct pwospf_if* prev_pw_iface = NULL;
-    // printf("Setting up ifs\n");
+
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+        ls_db[i].state = 0;    
+    }
+    
     while (iface) {
-        /* Allocate memory for PWOSPF interface */
         struct pwospf_if* pw_iface = malloc(sizeof(struct pwospf_if));
 
-        /* Initialize PWOSPF interface fields */
         pw_iface->iface = iface;
-        pw_iface->helloint = HELLO_INTERVAL; /* Default 10 seconds */
-        pw_iface->neighbor_id = 0;            /* No neighbor yet */
+        pw_iface->helloint = HELLO_INTERVAL;
+        pw_iface->neighbor_id = 0;
         pw_iface->neighbor_ip = 0;
         pw_iface->last_hello_time = 0;
         pw_iface->next = NULL;
 
-        /* Add to the router's interface list */
         if (prev_pw_iface) {
             prev_pw_iface->next = pw_iface;
         } else {
             sr->ospf_subsys->router->interfaces = pw_iface;
         }
+
+        update_lsdb(sr->ospf_subsys->router->router_id, 0, iface->ip&iface->mask, iface->mask, 1, iface->name);
+        
         prev_pw_iface = pw_iface;
         iface = iface->next;
-    }
-    prev_pw_iface = sr->ospf_subsys->router->interfaces;
-    while(prev_pw_iface){
-        printf("\n%s\n", get_ipstr(prev_pw_iface->iface->ip));
-        prev_pw_iface=prev_pw_iface->next;
     }
 
     /* -- start thread subsystem -- */
@@ -142,10 +140,19 @@ void* pwospf_run_thread(void* arg)
         struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
         int change1=0;
         time_t now = time(NULL);
+        struct link_state_entry track_lsdb[3];//Todo: Free this memory
+        int track_count=0;
         while(interfaces) {
             if((interfaces->neighbor_id != 0)&&(now-interfaces->last_hello_time)>HELLO_TIMEOUT){
                 interfaces->neighbor_id = 0;
                 change1=1;
+
+                track_lsdb[track_count].source_router_id = sr->ospf_subsys->router->router_id;
+                track_lsdb[track_count].neighbor_router_id = 0;
+                track_lsdb[track_count].subnet = interfaces->iface->ip&interfaces->iface->mask;
+                track_lsdb[track_count].mask = interfaces->iface->mask;
+                strncpy(track_lsdb[track_count].interface, interfaces->iface->name, SR_IFACE_NAMELEN);
+                track_count++;
             }
             interfaces = interfaces->next;
         }
@@ -159,6 +166,14 @@ void* pwospf_run_thread(void* arg)
         if(change1){
             //L2 Lock
             //LSDB Update
+            for(int i=0;i<track_count;i++){
+                update_lsdb(track_lsdb[track_count].source_router_id,
+                            track_lsdb[track_count].neighbor_router_id,
+                            track_lsdb[track_count].subnet,
+                            track_lsdb[track_count].mask,
+                            1,
+                            track_lsdb[track_count].interface);
+            }
             //L2 Unlock
             
             //L1 Lock

@@ -76,24 +76,24 @@ typedef struct pwospf_hdr {
     uint8_t  version;         
     uint8_t  type;            
     uint16_t packet_length;   
-    uint32_t router_id;       //Big-endian
-    uint32_t area_id;         //Big-endian
+    uint32_t router_id;       
+    uint32_t area_id;         
     uint16_t checksum;        
     uint16_t autype;          
     uint64_t authentication;  
 } pwospf_hdr_t;
 
 typedef struct pwospf_hello {
-    uint32_t network_mask;    //Big-endian
+    uint32_t network_mask;    
     uint16_t hello_int;       
     uint16_t padding;         
 } pwospf_hello_t;
 
 typedef struct link_state_entry {
-    uint32_t source_router_id; //Big-endian
-    uint32_t neighbor_router_id; //Big-endian
-    uint32_t subnet;             //Big-endian
-    uint32_t mask;               //Big-endian
+    uint32_t source_router_id; 
+    uint32_t neighbor_router_id; 
+    uint32_t subnet;             
+    uint32_t mask;               
     char interface[SR_IFACE_NAMELEN];
     time_t last_update_time;
     uint8_t state;               

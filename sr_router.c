@@ -109,15 +109,24 @@ void sr_handlepacket(struct sr_instance *sr,
 
                     //L3 Lock
                     struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
+                    struct link_state_entry track_lsdb;
                     int change1=0;
                     while(interfaces) {
-                        if (memcmp(interfaces->iface->name,this_iface->name,strlen(this_iface->name)) ==0) {
+                        if (strncmp(interfaces->iface->name,this_iface->name,strlen(this_iface->name))==0) {
                             interfaces->last_hello_time = time(NULL);
                             if(interfaces->neighbor_id != neighbor_id){
                                 interfaces->neighbor_id = neighbor_id;
+
+                                track_lsdb.source_router_id = sr->ospf_subsys->router->router_id;
+                                track_lsdb.neighbor_router_id = neighbor_id;
+                                track_lsdb.subnet = interfaces->iface->ip&interfaces->iface->mask;
+                                track_lsdb.mask = interfaces->iface->mask;
+                                strncpy(track_lsdb.interface, interfaces->iface->name, SR_IFACE_NAMELEN);
+
                                 change1=1;
                             }
                             interfaces->neighbor_ip = ip_hdr->ip_src.s_addr;
+
                             break;
                         }
                         interfaces = interfaces->next;
@@ -127,7 +136,12 @@ void sr_handlepacket(struct sr_instance *sr,
                     if(change1){
                         printf("Change1 (Link Up) detected \n");
                         //L2 Lock
-                        //LSDB Update
+                        update_lsdb(track_lsdb.source_router_id,
+                            track_lsdb.neighbor_router_id,
+                            track_lsdb.subnet,
+                            track_lsdb.mask,
+                            1,
+                            track_lsdb.interface);
                         //L2 Unlock
                         //L1 Lock
                         //Routing Table Update
