@@ -108,7 +108,7 @@ void sr_handlepacket(struct sr_instance *sr,
                     uint32_t mask = this_iface->mask;
 
                     //L3 Lock
-                    if (pthread_mutex_lock(&sr->ospf_subsys->lock3)) assert(0); 
+                    
 
                     struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
                     struct link_state_entry track_lsdb;
@@ -149,6 +149,7 @@ void sr_handlepacket(struct sr_instance *sr,
                             track_lsdb.interface);
 
                         if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
+                        //LSU Send
                         //L2 Unlock
                         //L1 Lock
                         //Routing Table Update

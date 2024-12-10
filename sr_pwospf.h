@@ -23,6 +23,7 @@
 #define PWOSPF_VERSION       2
 #define PWOSPF_TYPE_HELLO    1
 #define PWOSPF_TYPE_LSU      4
+#define MAX_ADS              5 //Max no of ads router can advertise
 #define OSPF_PROTOCOL_NUMBER 89
 #define ALLSPFROUTERS        0xe0000005
 #define PWOSPF_AU_TYPE       0
@@ -103,5 +104,18 @@ typedef struct link_state_entry {
     uint8_t color;
 } link_state_entry_t;
 struct link_state_entry ls_db[MAX_LINK_STATE_ENTRIES];
+
+typedef struct advertisement {
+    uint32_t subnet;
+    uint32_t mask;
+    uint32_t router_id;
+} advertisement_t;
+
+typedef struct lsu_hdr {
+    uint32_t sequence;     
+    uint8_t ttl;           
+    uint8_t padding[3];    
+    uint32_t num_ads;      
+} lsu_hdr_t;
 
 #endif /* SR_PWOSPF_H */
