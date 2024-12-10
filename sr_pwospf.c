@@ -19,6 +19,7 @@
 /* -- declaration of main thread function for pwospf subsystem --- */
 static void* pwospf_run_thread(void* arg);
 char* get_ipstr(uint32_t ip_big_endian);
+void send_pwospf_hello(struct sr_instance *sr, struct sr_if *iface);
 
 /*---------------------------------------------------------------------
  * Method: pwospf_init(..)
@@ -127,19 +128,122 @@ static
 void* pwospf_run_thread(void* arg)
 {
     struct sr_instance* sr = (struct sr_instance*)arg;
+    struct pwospf_router* router = sr->ospf_subsys->router;
 
     while(1)
     {
         /* -- PWOSPF subsystem functionality should start  here! -- */
+        struct sr_if* iface = sr->if_list;
+        while (iface) {
+            send_pwospf_hello(sr, iface);
+            iface = iface->next;
+        }
+        //L3 Lock
+        struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
+        int change1=0;
+        time_t now = time(NULL);
+        while(interfaces) {
+            if((interfaces->neighbor_id != 0)&&(now-interfaces->last_hello_time)>HELLO_TIMEOUT){
+                interfaces->neighbor_id = 0;
+                change1=1;
+            }
+            interfaces = interfaces->next;
+        }
+        if(change1){
+            printf("Change1 (Link Down) detected \n");
+            //LSU Send
+        }
+        //L3 Unlock
 
-        pwospf_lock(sr->ospf_subsys);
-        printf(" pwospf subsystem sleeping \n");
-        pwospf_unlock(sr->ospf_subsys);
+
+        if(change1){
+            //L2 Lock
+            //LSDB Update
+            //L2 Unlock
+            
+            //L1 Lock
+            //Routing Table Update
+            //L1 Unlock
+        }
+        
+
         sleep(2);
         printf(" pwospf subsystem awake \n");
     };
     return NULL;
 } /* -- run_ospf_thread -- */
+
+void send_pwospf_hello(struct sr_instance *sr, struct sr_if *iface) {
+    unsigned int pwospf_len = sizeof(pwospf_hdr_t) + sizeof(pwospf_hello_t);
+    
+    uint8_t *pwospf_packet = (uint8_t *)malloc(pwospf_len);
+
+    memset(pwospf_packet, 0, pwospf_len);
+    
+    /* PWOSPF Header */
+    pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)pwospf_packet;
+    pwospf_hdr->version = PWOSPF_VERSION;
+    pwospf_hdr->type = PWOSPF_TYPE_HELLO;
+    pwospf_hdr->packet_length = htons(pwospf_len);
+    pwospf_hdr->router_id = htonl(sr->ospf_subsys->router->router_id);
+    pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
+    pwospf_hdr->checksum = 0;             /* Initialize checksum to zero */
+    pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
+    pwospf_hdr->authentication = 0;       /* Authentication is 0 */
+    
+    /* PWOSPF Hello Packet */
+    pwospf_hello_t *pwospf_hello = (pwospf_hello_t *)(pwospf_packet + sizeof(pwospf_hdr_t));
+    pwospf_hello->network_mask = htonl(iface->mask);
+    pwospf_hello->hello_int = htons(HELLO_INTERVAL);
+    pwospf_hello->padding = 0;
+    int checksum_len = pwospf_len - sizeof(pwospf_hdr->authentication);
+    pwospf_hdr->checksum = get_checksum((uint16_t *)pwospf_packet, checksum_len / 2);
+    
+    // /* Now create the IP header */
+    unsigned int ip_len = sizeof(struct ip) + pwospf_len;
+    uint8_t *ip_packet = (uint8_t *)malloc(ip_len);
+    memset(ip_packet, 0, ip_len);
+    struct ip *ip_hdr = (struct ip *)ip_packet;
+    ip_hdr->ip_hl = 5;  /* IP header length (5 * 4 = 20 bytes) */
+    ip_hdr->ip_v = 4;   /* IP version 4 */
+    ip_hdr->ip_tos = 0; /* Type of service */
+    ip_hdr->ip_len = htons(ip_len); /* Total packet length */
+    ip_hdr->ip_id = htons(0); /* ID of this packet */
+    ip_hdr->ip_off = htons(IP_DF); /* Fragment offset */
+    ip_hdr->ip_ttl = 64; /* Time to live */
+    ip_hdr->ip_p = OSPF_PROTOCOL_NUMBER; /* Protocol number for OSPF */
+    ip_hdr->ip_src.s_addr = htonl(iface->ip); /* Source IP */
+    ip_hdr->ip_dst.s_addr = htonl(ALLSPFROUTERS); /* Destination IP (224.0.0.5) */ //Big Endian
+    
+    /* Compute IP checksum */
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = get_checksum((uint16_t *)ip_hdr, ip_hdr->ip_hl * 2);
+    memcpy(ip_packet + sizeof(struct ip), pwospf_packet, pwospf_len);
+    
+    /* Now create the Ethernet header */
+    unsigned int ether_len = sizeof(struct sr_ethernet_hdr) + ip_len;
+    uint8_t *ether_frame = (uint8_t *)malloc(ether_len);
+    memset(ether_frame, 0, ether_len);
+    
+    struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)ether_frame;
+    /* Set destination MAC to multicast address for OSPF (01:00:5e:00:00:05) */
+    eth_hdr->ether_dhost[0] = 0x01;
+    eth_hdr->ether_dhost[1] = 0x00;
+    eth_hdr->ether_dhost[2] = 0x5e;
+    eth_hdr->ether_dhost[3] = 0x00;
+    eth_hdr->ether_dhost[4] = 0x00;
+    eth_hdr->ether_dhost[5] = 0x05;
+    /* Source MAC is interface MAC */
+    memcpy(eth_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
+    eth_hdr->ether_type = htons(ETHERTYPE_IP); /* Ethernet type for IP */
+    
+    // /* Copy IP packet into Ethernet frame */
+    memcpy(ether_frame + sizeof(struct sr_ethernet_hdr), ip_packet, ip_len);
+    sr_send_packet(sr, ether_frame, ether_len, iface->name);
+    // free(pwospf_packet);
+    // free(ip_packet);
+    // free(ether_frame);
+}
 
 char* get_ipstr(uint32_t ip_big_endian) {
     uint32_t ip_host_order = ntohl(ip_big_endian);
@@ -154,4 +258,29 @@ char* get_ipstr(uint32_t ip_big_endian) {
             (ip_host_order >> 8) & 0xFF,
             ip_host_order & 0xFF);
     return result;
+}
+
+void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint32_t mask, int is_current_id, char *ifname) {
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
+        if (ls_db[i].source_router_id == source_id && (ls_db[i].subnet == subnet)) {
+            ls_db[i].neighbor_router_id = neighbor_id;
+            ls_db[i].subnet = subnet;
+            ls_db[i].last_update_time = time(NULL);
+            ls_db[i].mask = mask;
+            strncpy(ls_db[i].interface, ifname, SR_IFACE_NAMELEN);
+            return;
+        }
+    }
+    for (int i=0; i<MAX_LINK_STATE_ENTRIES; i++){
+        if(ls_db[i].state==0){
+            ls_db[i].source_router_id = source_id;
+            ls_db[i].neighbor_router_id = neighbor_id;
+            ls_db[i].subnet = subnet;
+            ls_db[i].last_update_time = time(NULL);
+            ls_db[i].mask = mask;
+            ls_db[i].state = 1;
+            strncpy(ls_db[i].interface, ifname, SR_IFACE_NAMELEN);
+            return;
+        }
+    }
 }

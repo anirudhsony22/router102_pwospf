@@ -28,7 +28,7 @@
 #define PWOSPF_AU_TYPE       0
 #define PWOSPF_AREA_ID       0
 #define HELLO_INTERVAL       10
-#define HELLO_TIMEOUT        25
+#define HELLO_TIMEOUT        12
 #define MAX_LINK_STATE_ENTRIES 15 
 #define DEFAULT_LSU_TTL      5
 #define MAX_ROUTERS 10
@@ -72,21 +72,33 @@ struct pwospf_subsys
 int pwospf_init(struct sr_instance* sr);
 
 
-// typedef struct pwospf_hdr {
-//     uint8_t  version;         
-//     uint8_t  type;            
-//     uint16_t packet_length;   
-//     uint32_t router_id;       //Big-endian
-//     uint32_t area_id;         //Big-endian
-//     uint16_t checksum;        
-//     uint16_t autype;          
-//     uint64_t authentication;  
-// } pwospf_hdr_t;
+typedef struct pwospf_hdr {
+    uint8_t  version;         
+    uint8_t  type;            
+    uint16_t packet_length;   
+    uint32_t router_id;       //Big-endian
+    uint32_t area_id;         //Big-endian
+    uint16_t checksum;        
+    uint16_t autype;          
+    uint64_t authentication;  
+} pwospf_hdr_t;
 
-// typedef struct pwospf_hello {
-//     uint32_t network_mask;    //Big-endian
-//     uint16_t hello_int;       
-//     uint16_t padding;         
-// } pwospf_hello_t;
+typedef struct pwospf_hello {
+    uint32_t network_mask;    //Big-endian
+    uint16_t hello_int;       
+    uint16_t padding;         
+} pwospf_hello_t;
+
+typedef struct link_state_entry {
+    uint32_t source_router_id; //Big-endian
+    uint32_t neighbor_router_id; //Big-endian
+    uint32_t subnet;             //Big-endian
+    uint32_t mask;               //Big-endian
+    char interface[SR_IFACE_NAMELEN];
+    time_t last_update_time;
+    uint8_t state;               
+    uint8_t color;
+} link_state_entry_t;
+struct link_state_entry ls_db[MAX_LINK_STATE_ENTRIES];
 
 #endif /* SR_PWOSPF_H */

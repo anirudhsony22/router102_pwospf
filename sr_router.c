@@ -34,6 +34,7 @@
  * Initialize the routing subsystem
  * 
  *---------------------------------------------------------------------*/
+int is_pwospf(uint8_t *packet);
 
 void sr_init(struct sr_instance* sr) 
 {
@@ -95,13 +96,76 @@ void sr_handlepacket(struct sr_instance *sr,
                 print_drop();
                 return;
             }
+            if(is_pwospf(packet)){
+                struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+                pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
+                if(pwospf_hdr->type == PWOSPF_TYPE_HELLO){
+                    struct pwospf_hello *hello = (struct pwospf_hello *)(pwospf_hdr + sizeof(pwospf_hdr_t));
+                    
+                    uint32_t neighbor_id = pwospf_hdr->router_id;
+                    struct sr_if* this_iface = sr_get_interface(sr, interface);
+                    uint32_t subnet = this_iface->ip & this_iface->mask; // Already in host byte order
+                    uint32_t mask = this_iface->mask;
 
-            populate_ip_header(packet);
-            handle_ip(packet, sr, len, interface);
+                    //L3 Lock
+                    struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
+                    int change1=0;
+                    while(interfaces) {
+                        if (memcmp(interfaces->iface->name,this_iface->name,strlen(this_iface->name)) ==0) {
+                            interfaces->last_hello_time = time(NULL);
+                            if(interfaces->neighbor_id != neighbor_id){
+                                interfaces->neighbor_id = neighbor_id;
+                                change1=1;
+                            }
+                            interfaces->neighbor_ip = ip_hdr->ip_src.s_addr;
+                            break;
+                        }
+                        interfaces = interfaces->next;
+                    }
+                    //L3 Unlock
 
+                    if(change1){
+                        printf("Change1 (Link Up) detected \n");
+                        //L2 Lock
+                        //LSDB Update
+                        //L2 Unlock
+                        //L1 Lock
+                        //Routing Table Update
+                        //L1 Unlock
+                    }
+                    // uint32_t source_router_id = sr->ospf_subsys->router->router_id;
+                    // update_lsdb(source_router_id, neighbor_id, subnet, mask, 1, interface);
+                    // create_routing_table(sr->ospf_subsys->router->router_id);
+                    // link_static_and_dynamic_tables(sr);  
+                }
+                else{
+                    //handle lsu
+                    //L2 Lock
+                    //LSDB Update
+                    //L2 Unlock
+
+                    //Check Change                    
+                    //L1 Lock
+                    //Routing Table Update
+                    //L1 Unlock
+                }
+            }
+            else{
+                populate_ip_header(packet);
+                handle_ip(packet, sr, len, interface);
+            }
             break;
         default:
             printf("Received an unknown packet type: 0x%04x\n", ntohs(eth_hdr->ether_type));
             print_drop();
     }
+}
+
+int is_pwospf(uint8_t *packet){
+    struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+    struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+    if (ip_hdr->ip_p != OSPF_PROTOCOL_NUMBER) {
+        return 0; // Not an OSPF packet
+    }
+    return 1;
 }
