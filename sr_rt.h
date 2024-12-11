@@ -36,7 +36,7 @@ struct sr_rt
     struct sr_rt* next;
 };
 
-
+struct sr_rt d_rt[15];
 
 
 int sr_load_rt(struct sr_instance*,const char*);

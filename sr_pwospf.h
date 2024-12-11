@@ -119,7 +119,8 @@ typedef struct advertisement {
 // } lsu_hdr_t;
 
 typedef struct lsu_hdr {
-    uint16_t sequence;     
+    // uint16_t sequence;
+    time_t sequence;
     uint8_t ttl;
     uint8_t num_ads;
 } lsu_hdr_t;
@@ -135,7 +136,8 @@ typedef struct queue {
 
 typedef struct sequence_table_entry {
     uint32_t source_router_id;  //Big-endian
-    uint32_t last_sequence_num; 
+    // uint32_t last_sequence_num;
+    time_t last_sequence_num; 
 } sequence_table_entry_t;
 struct sequence_table_entry seq[MAX_ROUTERS];
 

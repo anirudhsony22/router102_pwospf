@@ -159,6 +159,7 @@ void sr_handlepacket(struct sr_instance *sr,
 
                         // printf("Creating table from Hello\n");
                         // create_routing_table(sr->ospf_subsys->router->router_id, sr);
+                        // print_routing_table(d_rt);
                         
                         if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
                         //L2 Unlock
@@ -177,12 +178,17 @@ void sr_handlepacket(struct sr_instance *sr,
                     uint32_t sequence_number = lsu_h->sequence;
 
                     if((source_router_id!=sr->ospf_subsys->router->router_id)&&(is_valid_sequence(source_router_id, sequence_number))){
-                        
                         // L2 Lock
                         if (pthread_mutex_lock(&sr->ospf_subsys->lock2)) assert(0);
 
                         uint32_t num_adv = lsu_h->num_ads;
                         clear_lsdb(source_router_id);
+
+                        int has_default_gw = 0;
+                        if (num_adv > 3) {
+                            num_adv = 3;
+                            has_default_gw = 1;
+                        }
 
                         for (uint32_t i = 0; i < num_adv; i++) {                            
                             uint32_t subnet = (lsu_a[i].subnet);
@@ -192,7 +198,11 @@ void sr_handlepacket(struct sr_instance *sr,
                             update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, "");
                         }
 
-                        // create_routing_table(source_router_id, sr);
+                        if (has_default_gw) {
+                            update_lsdb(source_router_id, 0, 0, 0, 0, "");
+                        }
+
+                        create_routing_table(sr->ospf_subsys->router->router_id, sr);
                         // printf("Creating Table from LSU\n");
                         // print_routing_table(sr->dynamic_routing_table);
                         
