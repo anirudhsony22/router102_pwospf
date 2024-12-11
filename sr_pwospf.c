@@ -160,6 +160,7 @@ void* pwospf_run_thread(void* arg)
                 track_lsdb[track_count].source_router_id = sr->ospf_subsys->router->router_id;
                 track_lsdb[track_count].neighbor_router_id = 0;
                 track_lsdb[track_count].subnet = interfaces->iface->ip&interfaces->iface->mask;
+                printf("Inside Invalidation, IP, Mask: %s \t %s\n", get_ipstr(interfaces->iface->ip), get_ipstr(interfaces->iface->mask));
                 track_lsdb[track_count].mask = interfaces->iface->mask;
                 strncpy(track_lsdb[track_count].interface, interfaces->iface->name, SR_IFACE_NAMELEN);
                 track_count++;
@@ -179,16 +180,18 @@ void* pwospf_run_thread(void* arg)
             if (pthread_mutex_lock(&sr->ospf_subsys->lock2)) assert(0); 
             //LSDB Update
             for(int i=0;i<track_count;i++){
-                update_lsdb(track_lsdb[track_count].source_router_id,
-                            track_lsdb[track_count].neighbor_router_id,
-                            track_lsdb[track_count].subnet,
-                            track_lsdb[track_count].mask,
+                update_lsdb(track_lsdb[i].source_router_id,
+                            track_lsdb[i].neighbor_router_id,
+                            track_lsdb[i].subnet,
+                            track_lsdb[i].mask,
                             1,
-                            track_lsdb[track_count].interface);
+                            track_lsdb[i].interface);
             }
 
             printf("Creating table from Invalidation\n");
             create_routing_table(sr->ospf_subsys->router->router_id, sr);
+            print_link_state_table();
+            print_routing_table(sr->dynamic_routing_table);
             if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
             //L2 Unlock
         }
@@ -394,6 +397,7 @@ char* get_ipstr(uint32_t ip_big_endian) {
 void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint32_t mask, int is_current_id, char *ifname) {
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
         if (ls_db[i].source_router_id == source_id && (ls_db[i].subnet == subnet)) {
+            printf("LSDB Update Subnet: %s\n", get_ipstr(ls_db[i].subnet));
             ls_db[i].neighbor_router_id = neighbor_id;
             ls_db[i].subnet = subnet;
             ls_db[i].last_update_time = time(NULL);

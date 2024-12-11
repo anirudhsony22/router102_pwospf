@@ -643,7 +643,7 @@ void* ipcache_thread(void* sr_arg) {
 
     while (1) {
         // printf("Thread is running...\n");
-        print_routing_table(sr->dynamic_routing_table);
+        // print_routing_table(sr->dynamic_routing_table);
 
         pthread_mutex_lock(&CACHE_LOCK);  
 
