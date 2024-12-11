@@ -133,4 +133,10 @@ typedef struct queue {
     uint32_t next_hop; // Extension to include next hop information
 } queue_entry_t;
 
+typedef struct sequence_table_entry {
+    uint32_t source_router_id;  //Big-endian
+    uint32_t last_sequence_num; 
+} sequence_table_entry_t;
+struct sequence_table_entry seq[MAX_ROUTERS];
+
 #endif /* SR_PWOSPF_H */

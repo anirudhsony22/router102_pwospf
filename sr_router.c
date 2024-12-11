@@ -99,6 +99,7 @@ void sr_handlepacket(struct sr_instance *sr,
             if(is_pwospf(packet)){
                 struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
                 pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
+                
                 if(pwospf_hdr->type == PWOSPF_TYPE_HELLO){
                     struct pwospf_hello *hello = (struct pwospf_hello *)(pwospf_hdr + sizeof(pwospf_hdr_t));
                     
@@ -134,6 +135,11 @@ void sr_handlepacket(struct sr_instance *sr,
                         interfaces = interfaces->next;
                     }
 
+                    if (change1) {
+                        // send_pwospf_lsu(sr);
+                        // we will send lsu only from thread
+                    }
+
                     if (pthread_mutex_unlock(&sr->ospf_subsys->lock3)) assert(0); 
                     //L3 Unlock
 
@@ -149,8 +155,10 @@ void sr_handlepacket(struct sr_instance *sr,
                             1,
                             track_lsdb.interface);
 
-                        printf("Creating table from Hello\n");
-                        create_routing_table(sr->ospf_subsys->router->router_id, sr);
+                        // Todo: send lsu
+
+                        // printf("Creating table from Hello\n");
+                        // create_routing_table(sr->ospf_subsys->router->router_id, sr);
                         
                         if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
                         //L2 Unlock
@@ -158,12 +166,49 @@ void sr_handlepacket(struct sr_instance *sr,
                     } 
                 }
                 else{
-                    printf("Rec'd LSU\n");
-                    //handle lsu
-                    //L2 Lock
-                    //LSDB Update
-                    //L2 Unlock
+                    struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+                    struct ip *ip_hdr = (struct ip *)(packet + sizeof(struct sr_ethernet_hdr));
+                    struct pwospf_hdr *pwospf_hdr = (struct pwospf_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
+                    struct lsu_hdr *lsu_h = (struct lsu_hdr *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t));
+                    
+                    struct advertisement *lsu_a = (struct lsu_adv *)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t));
+                    
+                    uint32_t source_router_id = (pwospf_hdr->router_id);
+                    uint32_t sequence_number = lsu_h->sequence;
 
+                    if((source_router_id!=sr->ospf_subsys->router->router_id)&&(is_valid_sequence(source_router_id, sequence_number))){
+                        
+                        // L2 Lock
+                        if (pthread_mutex_lock(&sr->ospf_subsys->lock2)) assert(0);
+
+                        uint32_t num_adv = lsu_h->num_ads;
+                        clear_lsdb(source_router_id);
+
+                        for (uint32_t i = 0; i < num_adv; i++) {                            
+                            uint32_t subnet = (lsu_a[i].subnet);
+                            uint32_t mask = (lsu_a[i].mask);
+                            uint32_t neighbor_id = (lsu_a[i].router_id);
+
+                            update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, "");
+                        }
+
+                        // create_routing_table(source_router_id, sr);
+                        // printf("Creating Table from LSU\n");
+                        // print_routing_table(sr->dynamic_routing_table);
+                        
+                        if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
+                        // L2 Unlock
+
+                        // forwading LSU but no locks required
+                        struct sr_if* iface = sr->if_list;
+                        populate_ip_header(packet);
+                        lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(packet +  sizeof(struct sr_ethernet_hdr) + sizeof(struct ip) + sizeof(pwospf_hdr_t));
+                        lsu_hdr->ttl--;
+                        while (iface) {
+                            forward_lsu(sr, packet, len, iface);
+                            iface = iface->next;
+                        }
+                    }
                 }
             }
             else{

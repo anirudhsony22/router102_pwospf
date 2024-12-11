@@ -63,6 +63,7 @@ int pwospf_init(struct sr_instance* sr)
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
         ls_db[i].state = 0;    
     }
+    init_seq();
     
     while (iface) {
         struct pwospf_if* pw_iface = malloc(sizeof(struct pwospf_if));
@@ -168,18 +169,13 @@ void* pwospf_run_thread(void* arg)
             }
             interfaces = interfaces->next;
         }
-        interfaces = sr->ospf_subsys->router->interfaces;
-        while(interfaces){
-            send_pwospf_lsu(sr);
-            interfaces=interfaces->next;
-        }
+        
+        send_pwospf_lsu(sr); // send always lsu
         if(change1){
             printf("Change1 (Link Down) detected\n");
-            // send_pwospf_lsu(sr); //L3 Locks + Unlocks Inside
         }
         if (pthread_mutex_unlock(&sr->ospf_subsys->lock3)) assert(0); 
         //L3 Unlock
-
 
         if(change1){
             //L2 Lock
@@ -195,16 +191,14 @@ void* pwospf_run_thread(void* arg)
             }
 
             printf("Creating table from Invalidation\n");
-            create_routing_table(sr->ospf_subsys->router->router_id, sr);
-            print_link_state_table();
-            print_routing_table(sr->dynamic_routing_table);
+            // create_routing_table(sr->ospf_subsys->router->router_id, sr);
+            // print_routing_table(sr->dynamic_routing_table);
             if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
             //L2 Unlock
         }
 
-
-        
-        sleep(2);
+        print_link_state_table();
+        sleep(5);
         printf(" pwospf subsystem awake \n");
     };
     return NULL;
@@ -291,10 +285,15 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         advertisement_t *ads = (advertisement_t *)malloc(MAX_ADS * sizeof(advertisement_t));
 
         int num_ads = 0;
+        printf("::::::::::::::::::::LSU Advertisement::::::::::::::::\n");
         while (interfaces) {
-            ads[num_ads].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
-            ads[num_ads].mask = htonl(interfaces->iface->mask);
-            ads[num_ads].router_id = htonl(interfaces->neighbor_id);
+            ads[num_ads].subnet = (interfaces->iface->ip & interfaces->iface->mask);
+            ads[num_ads].mask = (interfaces->iface->mask);
+            ads[num_ads].router_id = (interfaces->neighbor_id);
+            printf("%d\n", num_ads+1);
+            printf("Subnet: %s\n", get_ipstr(ads[num_ads].subnet));
+            printf("Mask: %s\n", get_ipstr(ads[num_ads].mask));
+            printf("Router ID: %s\n", get_ipstr(ads[num_ads].router_id));
             num_ads++;
             interfaces = interfaces->next;
         }
@@ -308,21 +307,14 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         pwospf_hdr->version = PWOSPF_VERSION;
         pwospf_hdr->type = PWOSPF_TYPE_LSU;
         pwospf_hdr->packet_length = htons(lsu_len);
-        pwospf_hdr->router_id = htonl(router->router_id);
-        // pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
-        // pwospf_hdr->checksum = 0; // Placeholder
-        // pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
-        // pwospf_hdr->authentication = 0;
+        pwospf_hdr->router_id = router->router_id;
 
         lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
-        lsu_hdr->sequence = htonl(router->sequence_number++);
+        lsu_hdr->sequence = (router->sequence_number++);
         lsu_hdr->ttl = DEFAULT_LSU_TTL;
-        lsu_hdr->num_ads = htonl(num_ads);
+        lsu_hdr->num_ads = (num_ads);
 
         memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t), ads, num_ads * sizeof(advertisement_t));
-
-        // int checksum_len = lsu_len - sizeof(pwospf_hdr->authentication);
-        // pwospf_hdr->checksum = get_checksum((uint16_t *)lsu_packet, checksum_len / 2);
 
         //Send to each interface
         interfaces = router->interfaces;
@@ -376,6 +368,13 @@ void send_pwospf_lsu(struct sr_instance *sr) {
     }
 }
 
+void forward_lsu(struct sr_instance* sr, uint8_t *packet, int len, struct sr_if* iface) {
+    struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
+    memcpy(eth_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
+
+    sr_send_packet(sr, packet, len, iface->name);
+}
+
 char* get_ipstr(uint32_t ip_big_endian) {
     uint32_t ip_host_order = ntohl(ip_big_endian);
 
@@ -394,11 +393,11 @@ char* get_ipstr(uint32_t ip_big_endian) {
 void update_lsdb(uint32_t source_id, uint32_t neighbor_id, uint32_t subnet, uint32_t mask, int is_current_id, char *ifname) {
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
         if (ls_db[i].source_router_id == source_id && (ls_db[i].subnet == subnet)) {
-            printf("LSDB Update Subnet: %s\n", get_ipstr(ls_db[i].subnet));
             ls_db[i].neighbor_router_id = neighbor_id;
             ls_db[i].subnet = subnet;
             ls_db[i].last_update_time = time(NULL);
             ls_db[i].mask = mask;
+            ls_db[i].state = 0;
             strncpy(ls_db[i].interface, ifname, SR_IFACE_NAMELEN);
             return;
         }
@@ -422,6 +421,13 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
     uint32_t qt[MAX_LINK_STATE_ENTRIES];//Todo: Free this memory
     uint32_t next_hop[MAX_LINK_STATE_ENTRIES];//Todo: Free this memory
     struct sr_rt *temp_routing_table = malloc(sizeof(struct sr_rt) * MAX_LINK_STATE_ENTRIES); // Allocate memory dynamically
+    // struct sr_rt *temp = temp_routing_table;
+    // while (temp_routing_table) {
+    //     struct sr_rt* next = temp_routing_table->next;
+    //     free(temp_routing_table);
+    //     temp_routing_table = next;
+    // }
+    // temp_routing_table=temp;
 
     int temp_rt_counter = 0;
     int rear = 0;
@@ -457,8 +463,7 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
                 if(link_used==0){
                     qt[rear] = ls_db[i].neighbor_router_id; // Ensure null termination
                     next_hop[rear] = (source_router_id == current_router_id) ? ls_db[i].neighbor_router_id :
-                                        current_next_hop;
-                    
+                                        current_next_hop;                    
 
                     // add to dynamic router
                     temp_routing_table[temp_rt_counter].dest.s_addr = curr_subnet;
@@ -474,7 +479,7 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
                     temp_rt_counter++;
                     rear++;
                 }
-
+                                
                 ls_db[i].color = BLACK;
             }
         }
@@ -505,6 +510,40 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
     }
 
     return;
+}
+
+void init_seq(){
+    for(int i=0;i<MAX_ROUTERS;i++){
+        seq[i].last_sequence_num=-1;
+    }
+}
+
+int is_valid_sequence(uint32_t source, uint32_t check){
+    printf("Seq number %d\n", check);
+    for (int i = 0; i < MAX_ROUTERS; i++) {
+        if (seq[i].source_router_id == source) {
+            if(seq[i].last_sequence_num>=check){
+                return 0;
+            }
+            seq[i].last_sequence_num=check;
+            return 1;
+        }
+    }
+    for (int i = 0; i < MAX_ROUTERS; i++) {
+        if(seq[i].last_sequence_num==-1){
+            seq[i].source_router_id = source;
+            seq[i].last_sequence_num = check;
+            return 1;
+        }
+    }
+}
+
+void clear_lsdb(uint32_t source_id){
+    for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
+        if(ls_db[i].source_router_id == source_id){
+            ls_db[i].state = 0; //Invalidate it
+        }
+    }
 }
 
 void print_link_state_table() {
