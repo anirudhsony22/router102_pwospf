@@ -208,7 +208,7 @@ void* pwospf_run_thread(void* arg)
         }
 
         // print_link_state_table();
-        print_routing_table(d_rt);
+        // print_routing_table(d_rt);
         sleep(5);
         printf(" pwospf subsystem awake \n");
     };
@@ -296,15 +296,15 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         advertisement_t *ads = (advertisement_t *)malloc(MAX_ADS * sizeof(advertisement_t));
 
         int num_ads = 0;
-        printf("::::::::::::::::::::LSU Advertisement::::::::::::::::\n");
+        // printf("::::::::::::::::::::LSU Advertisement::::::::::::::::\n");
         while (interfaces) {
             ads[num_ads].subnet = (interfaces->iface->ip & interfaces->iface->mask);
             ads[num_ads].mask = (interfaces->iface->mask);
             ads[num_ads].router_id = (interfaces->neighbor_id);
-            printf("%d\n", num_ads+1);
-            printf("Subnet: %s\n", get_ipstr(ads[num_ads].subnet));
-            printf("Mask: %s\n", get_ipstr(ads[num_ads].mask));
-            printf("Router ID: %s\n", get_ipstr(ads[num_ads].router_id));
+            // printf("%d\n", num_ads+1);
+            // printf("Subnet: %s\n", get_ipstr(ads[num_ads].subnet));
+            // printf("Mask: %s\n", get_ipstr(ads[num_ads].mask));
+            // printf("Router ID: %s\n", get_ipstr(ads[num_ads].router_id));
             num_ads++;
             interfaces = interfaces->next;
         }
@@ -313,10 +313,10 @@ void send_pwospf_lsu(struct sr_instance *sr) {
             // ads[num_ads].subnet = 0;
             // ads[num_ads].mask = 0;
             // ads[num_ads].router_id = sr->routing_table->gw.s_addr;
-            printf("%d\n", num_ads+1);
-            printf("Subnet: %s\n", get_ipstr(0));
-            printf("Mask: %s\n", get_ipstr(0));
-            printf("Router ID: %s\n", get_ipstr(0));
+            // printf("%d\n", num_ads+1);
+            // printf("Subnet: %s\n", get_ipstr(0));
+            // printf("Mask: %s\n", get_ipstr(0));
+            // printf("Router ID: %s\n", get_ipstr(0));
             // num_ads++;
         }
 
