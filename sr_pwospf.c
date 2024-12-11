@@ -21,6 +21,7 @@
 static void* pwospf_run_thread(void* arg);
 char* get_ipstr(uint32_t ip_big_endian);
 void send_pwospf_hello(struct sr_instance *sr, struct sr_if *iface);
+// void send_pwospf_lsu2(struct sr_instance *sr, struct pwospf_if *pw_iface);
 void create_routing_table(uint32_t source_router_id, struct sr_instance *sr);
 void print_routing_table(struct sr_rt* rt);
 
@@ -167,6 +168,11 @@ void* pwospf_run_thread(void* arg)
             }
             interfaces = interfaces->next;
         }
+        interfaces = sr->ospf_subsys->router->interfaces;
+        while(interfaces){
+            send_pwospf_lsu(sr);
+            interfaces=interfaces->next;
+        }
         if(change1){
             printf("Change1 (Link Down) detected\n");
             // send_pwospf_lsu(sr); //L3 Locks + Unlocks Inside
@@ -217,18 +223,18 @@ void send_pwospf_hello(struct sr_instance *sr, struct sr_if *iface) {
     pwospf_hdr->type = PWOSPF_TYPE_HELLO;
     pwospf_hdr->packet_length = htons(pwospf_len);
     pwospf_hdr->router_id = (sr->ospf_subsys->router->router_id);
-    pwospf_hdr->area_id = (PWOSPF_AREA_ID);
-    pwospf_hdr->checksum = 0;             /* Initialize checksum to zero */
-    pwospf_hdr->autype = (PWOSPF_AU_TYPE);
-    pwospf_hdr->authentication = 0;       /* Authentication is 0 */
+    // pwospf_hdr->area_id = (PWOSPF_AREA_ID);
+    // pwospf_hdr->checksum = 0;             /* Initialize checksum to zero */
+    // pwospf_hdr->autype = (PWOSPF_AU_TYPE);
+    // pwospf_hdr->authentication = 0;       /* Authentication is 0 */
     
     /* PWOSPF Hello Packet */
     pwospf_hello_t *pwospf_hello = (pwospf_hello_t *)(pwospf_packet + sizeof(pwospf_hdr_t));
     pwospf_hello->network_mask = (iface->mask);
     pwospf_hello->hello_int = htons(HELLO_INTERVAL);
     pwospf_hello->padding = 0;
-    int checksum_len = pwospf_len - sizeof(pwospf_hdr->authentication);
-    pwospf_hdr->checksum = get_checksum((uint16_t *)pwospf_packet, checksum_len / 2);
+    // int checksum_len = pwospf_len - sizeof(pwospf_hdr->authentication);
+    // pwospf_hdr->checksum = get_checksum((uint16_t *)pwospf_packet, checksum_len / 2);
     
     // /* Now create the IP header */
     unsigned int ip_len = sizeof(struct ip) + pwospf_len;
@@ -303,10 +309,10 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         pwospf_hdr->type = PWOSPF_TYPE_LSU;
         pwospf_hdr->packet_length = htons(lsu_len);
         pwospf_hdr->router_id = htonl(router->router_id);
-        pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
-        pwospf_hdr->checksum = 0; // Placeholder
-        pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
-        pwospf_hdr->authentication = 0;
+        // pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
+        // pwospf_hdr->checksum = 0; // Placeholder
+        // pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
+        // pwospf_hdr->authentication = 0;
 
         lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
         lsu_hdr->sequence = htonl(router->sequence_number++);
@@ -315,8 +321,8 @@ void send_pwospf_lsu(struct sr_instance *sr) {
 
         memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t), ads, num_ads * sizeof(advertisement_t));
 
-        int checksum_len = lsu_len - sizeof(pwospf_hdr->authentication);
-        pwospf_hdr->checksum = get_checksum((uint16_t *)lsu_packet, checksum_len / 2);
+        // int checksum_len = lsu_len - sizeof(pwospf_hdr->authentication);
+        // pwospf_hdr->checksum = get_checksum((uint16_t *)lsu_packet, checksum_len / 2);
 
         //Send to each interface
         interfaces = router->interfaces;
@@ -369,15 +375,6 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         free(ads);
     }
 }
-
-    // pthread_mutex_lock(&sr->ospf_subsys->lock); // Ensure thread safety
-
-    // Count the number of valid interfaces (advertisements)
-
-    // Allocate memory for the LSU packet
-
-    // Construct LSU header
-    // Add advertisements from interfaces
 
 char* get_ipstr(uint32_t ip_big_endian) {
     uint32_t ip_host_order = ntohl(ip_big_endian);
@@ -557,3 +554,123 @@ void print_routing_table(struct sr_rt* current) {
         current = current->next;
     }
 }
+
+// void send_pwospf_lsu2(struct sr_instance *sr, struct pwospf_if *pw_iface) {
+//     struct pwospf_router *router = sr->ospf_subsys->router;
+//     struct pwospf_if* interfaces = router->interfaces;
+//     // advertisement_t *ads = (advertisement_t *)malloc(MAX_ADS * sizeof(advertisement_t));
+//     advertisement_t *ads = (advertisement_t *)malloc(sizeof(advertisement_t));
+//     advertisement_t *ads2 = (advertisement_t *)malloc(sizeof(advertisement_t));
+//     advertisement_t *ads3 = (advertisement_t *)malloc(sizeof(advertisement_t));
+//     // advertisement_t *ads = (advertisement_t *)malloc(sizeof(advertisement_t));
+
+//     int num_ads = 0;
+//     ads[0].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
+//     ads[0].mask = htonl(interfaces->iface->mask);
+//     ads[0].router_id = htonl(interfaces->neighbor_id);
+    
+//     interfaces = interfaces->next;
+//     ads2[0].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
+//     ads2[0].mask = htonl(interfaces->iface->mask);
+//     ads2[0].router_id = htonl(interfaces->neighbor_id);
+
+    
+//     interfaces = interfaces->next;
+//     ads3[0].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
+//     ads3[0].mask = htonl(interfaces->iface->mask);
+//     ads3[0].router_id = htonl(interfaces->neighbor_id);
+
+//     num_ads = 4;
+    
+//     // while (interfaces) {
+//     //     ads[num_ads].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
+//     //     ads[num_ads].mask = htonl(interfaces->iface->mask);
+//     //     ads[num_ads].router_id = htonl(interfaces->neighbor_id);
+//     //     num_ads++;
+//     //     interfaces = interfaces->next;
+//     // }
+//     unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t) + sizeof(advertisement_t) + 2*sizeof(advertisement_t);
+//     // unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t) + sizeof(advertisement_t);
+//     // unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t);
+//     uint8_t *lsu_packet = (uint8_t *)malloc(lsu_len);
+//     memset(lsu_packet, 0, lsu_len);
+
+//     pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)lsu_packet;
+//     pwospf_hdr->version = PWOSPF_VERSION;
+//     pwospf_hdr->type = PWOSPF_TYPE_LSU;
+//     pwospf_hdr->packet_length = htons(lsu_len);
+//     pwospf_hdr->router_id = (router->router_id);
+//     // pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
+//     // pwospf_hdr->checksum = 0; // Placeholder
+//     // pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
+//     // pwospf_hdr->authentication = 0;
+
+//     // lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
+//     // lsu_hdr->sequence = htonl(router->sequence_number++);
+//     // lsu_hdr->ttl = DEFAULT_LSU_TTL;
+//     // lsu_hdr->num_ads = htonl(num_ads);
+
+//     lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
+//     lsu_hdr->sequence = htons(router->sequence_number++);
+//     lsu_hdr->ttl = DEFAULT_LSU_TTL;
+//     lsu_hdr->num_ads = num_ads;
+
+//     memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t), ads, sizeof(advertisement_t));
+//     memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t), ads2, sizeof(advertisement_t));
+//     memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t) + sizeof(advertisement_t), ads3, sizeof(advertisement_t));
+
+//     printf("Adv pack size: %d\n", sizeof(advertisement_t));
+
+//     // int checksum_len = lsu_len - sizeof(pwospf_hdr->authentication);
+//     // pwospf_hdr->checksum = get_checksum((uint16_t *)lsu_packet, checksum_len / 2);
+
+//     unsigned int ip_len = sizeof(struct ip) + lsu_len;
+//     uint8_t *ip_packet = (uint8_t *)malloc(ip_len);
+//     memset(ip_packet, 0, ip_len);
+
+//     struct ip *ip_hdr = (struct ip *)ip_packet;
+//     ip_hdr->ip_hl = 5;
+//     ip_hdr->ip_v = 4;
+//     ip_hdr->ip_tos = 0;
+//     ip_hdr->ip_len = htons(ip_len);
+//     ip_hdr->ip_id = htons(0);
+//     ip_hdr->ip_off = htons(IP_DF);
+//     ip_hdr->ip_ttl = 64;
+//     ip_hdr->ip_p = OSPF_PROTOCOL_NUMBER;
+//     ip_hdr->ip_src.s_addr = pw_iface->iface->ip;
+//     ip_hdr->ip_dst.s_addr = pw_iface->neighbor_ip;
+
+//     ip_hdr->ip_sum = get_checksum((uint16_t *)ip_hdr, ip_hdr->ip_hl * 2);//Verify if you need this in htons
+//     memcpy(ip_packet + sizeof(struct ip), lsu_packet, lsu_len);
+
+//     unsigned int ether_len = sizeof(struct sr_ethernet_hdr) + ip_len;
+//     uint8_t *ether_frame = (uint8_t *)malloc(ether_len);
+//     memset(ether_frame, 0, ether_len);
+
+//     struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)ether_frame;
+//     eth_hdr->ether_dhost[0] = 0x01;
+//     eth_hdr->ether_dhost[1] = 0x00;
+//     eth_hdr->ether_dhost[2] = 0x5e;
+//     eth_hdr->ether_dhost[3] = 0x00;
+//     eth_hdr->ether_dhost[4] = 0x00;
+//     eth_hdr->ether_dhost[5] = 0x05;
+
+//     memcpy(eth_hdr->ether_shost, pw_iface->iface->addr, ETHER_ADDR_LEN);
+//     eth_hdr->ether_type = htons(ETHERTYPE_IP);
+
+//     memcpy(ether_frame + sizeof(struct sr_ethernet_hdr), ip_packet, ip_len);
+
+//     sr_send_packet(sr, ether_frame, ether_len, pw_iface->iface->name);
+
+//     free(ip_packet);
+//     free(ether_frame);
+    
+// };
+    // pthread_mutex_lock(&sr->ospf_subsys->lock); // Ensure thread safety
+
+    // Count the number of valid interfaces (advertisements)
+
+    // Allocate memory for the LSU packet
+
+    // Construct LSU header
+    // Add advertisements from interfaces

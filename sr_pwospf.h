@@ -81,10 +81,10 @@ typedef struct pwospf_hdr {
     uint8_t  type;            
     uint16_t packet_length;   
     uint32_t router_id;       
-    uint32_t area_id;         
-    uint16_t checksum;        
-    uint16_t autype;          
-    uint64_t authentication;  
+    // uint32_t area_id;         
+    // uint16_t checksum;        
+    // uint16_t autype;          
+    // uint64_t authentication;  
 } pwospf_hdr_t;
 
 typedef struct pwospf_hello {
@@ -111,11 +111,17 @@ typedef struct advertisement {
     uint32_t router_id;
 } advertisement_t;
 
+// typedef struct lsu_hdr {
+//     uint32_t sequence;     
+//     uint8_t ttl;           
+//     uint8_t padding[3];    
+//     uint32_t num_ads;      
+// } lsu_hdr_t;
+
 typedef struct lsu_hdr {
-    uint32_t sequence;     
-    uint8_t ttl;           
-    uint8_t padding[3];    
-    uint32_t num_ads;      
+    uint16_t sequence;     
+    uint8_t ttl;
+    uint8_t num_ads;
 } lsu_hdr_t;
 
 typedef struct queue {
