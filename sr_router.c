@@ -108,7 +108,7 @@ void sr_handlepacket(struct sr_instance *sr,
                     uint32_t mask = this_iface->mask;
 
                     //L3 Lock
-                    
+                    if (pthread_mutex_lock(&sr->ospf_subsys->lock3)) assert(0); 
 
                     struct pwospf_if* interfaces = sr->ospf_subsys->router->interfaces;
                     struct link_state_entry track_lsdb;
@@ -141,6 +141,7 @@ void sr_handlepacket(struct sr_instance *sr,
                         printf("Change1 (Link Up) detected \n");
                         //L2 Lock
                         if (pthread_mutex_lock(&sr->ospf_subsys->lock2)) assert(0); 
+                        
                         update_lsdb(track_lsdb.source_router_id,
                             track_lsdb.neighbor_router_id,
                             track_lsdb.subnet,
@@ -148,28 +149,21 @@ void sr_handlepacket(struct sr_instance *sr,
                             1,
                             track_lsdb.interface);
 
+                        printf("Creating table from Hello\n");
+                        create_routing_table(sr->ospf_subsys->router->router_id, sr);
+                        
                         if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
-                        //LSU Send
                         //L2 Unlock
-                        //L1 Lock
-                        //Routing Table Update
-                        //L1 Unlock
-                    }
-                    // uint32_t source_router_id = sr->ospf_subsys->router->router_id;
-                    // update_lsdb(source_router_id, neighbor_id, subnet, mask, 1, interface);
-                    // create_routing_table(sr->ospf_subsys->router->router_id);
-                    // link_static_and_dynamic_tables(sr);  
+
+                    } 
                 }
                 else{
+                    printf("Rec'd LSU\n");
                     //handle lsu
                     //L2 Lock
                     //LSDB Update
                     //L2 Unlock
 
-                    //Check Change                    
-                    //L1 Lock
-                    //Routing Table Update
-                    //L1 Unlock
                 }
             }
             else{

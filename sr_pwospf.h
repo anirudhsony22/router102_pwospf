@@ -118,4 +118,13 @@ typedef struct lsu_hdr {
     uint32_t num_ads;      
 } lsu_hdr_t;
 
+typedef struct queue {
+    uint32_t neighbor_router_id;
+    uint32_t subnet;
+    uint32_t mask;
+    uint8_t color;
+    char interface[SR_IFACE_NAMELEN];
+    uint32_t next_hop; // Extension to include next hop information
+} queue_entry_t;
+
 #endif /* SR_PWOSPF_H */
