@@ -165,7 +165,6 @@ void* pwospf_run_thread(void* arg)
                 track_lsdb[track_count].neighbor_router_id = 0;
                 track_lsdb[track_count].neighbor_interface_id = 0;
                 track_lsdb[track_count].subnet = interfaces->iface->ip&interfaces->iface->mask;
-                printf("Inside Invalidation, IP, Mask: %s \t %s\n", get_ipstr(interfaces->iface->ip), get_ipstr(interfaces->iface->mask));
                 track_lsdb[track_count].mask = interfaces->iface->mask;
                 strncpy(track_lsdb[track_count].interface, interfaces->iface->name, SR_IFACE_NAMELEN);
                 track_count++;
@@ -203,17 +202,13 @@ void* pwospf_run_thread(void* arg)
                             track_lsdb[i].interface);
             }
 
-            printf("Creating table from Invalidation\n");
+            // printf("Creating table from Invalidation\n");
             create_routing_table(sr->ospf_subsys->router->router_id, sr);
-            // print_routing_table(d_rt);
-            // print_routing_table(sr->dynamic_routing_table);
             if (pthread_mutex_unlock(&sr->ospf_subsys->lock2)) assert(0); 
             //L2 Unlock
         }
 
-        // print_link_state_table();
-        print_routing_table(d_rt);
-        sleep(5);
+        sleep(10);
         printf(" pwospf subsystem awake \n");
     };
     return NULL;
@@ -232,19 +227,12 @@ void send_pwospf_hello(struct sr_instance *sr, struct sr_if *iface) {
     pwospf_hdr->type = PWOSPF_TYPE_HELLO;
     pwospf_hdr->packet_length = htons(pwospf_len);
     pwospf_hdr->router_id = (sr->ospf_subsys->router->router_id);
-    // pwospf_hdr->router_id = (iface->ip);
-    // pwospf_hdr->area_id = (PWOSPF_AREA_ID);
-    // pwospf_hdr->checksum = 0;             /* Initialize checksum to zero */
-    // pwospf_hdr->autype = (PWOSPF_AU_TYPE);
-    // pwospf_hdr->authentication = 0;       /* Authentication is 0 */
     
     /* PWOSPF Hello Packet */
     pwospf_hello_t *pwospf_hello = (pwospf_hello_t *)(pwospf_packet + sizeof(pwospf_hdr_t));
     pwospf_hello->network_mask = (iface->mask);
     pwospf_hello->hello_int = htons(HELLO_INTERVAL);
     pwospf_hello->padding = 0;
-    // int checksum_len = pwospf_len - sizeof(pwospf_hdr->authentication);
-    // pwospf_hdr->checksum = get_checksum((uint16_t *)pwospf_packet, checksum_len / 2);
     
     // /* Now create the IP header */
     unsigned int ip_len = sizeof(struct ip) + pwospf_len;
@@ -301,28 +289,12 @@ void send_pwospf_lsu(struct sr_instance *sr) {
         advertisement_t *ads = (advertisement_t *)malloc(MAX_ADS * sizeof(advertisement_t));
 
         int num_ads = 0;
-        // printf("::::::::::::::::::::LSU Advertisement::::::::::::::::\n");
         while (interfaces) {
             ads[num_ads].subnet = (interfaces->iface->ip & interfaces->iface->mask);
             ads[num_ads].mask = (interfaces->iface->mask);
             ads[num_ads].router_id = (interfaces->neighbor_id);
-            // printf("%d\n", num_ads+1);
-            // printf("Subnet: %s\n", get_ipstr(ads[num_ads].subnet));
-            // printf("Mask: %s\n", get_ipstr(ads[num_ads].mask));
-            // printf("Router ID: %s\n", get_ipstr(ads[num_ads].router_id));
             num_ads++;
             interfaces = interfaces->next;
-        }
-
-        if (sr->routing_table) {
-            // ads[num_ads].subnet = 0;
-            // ads[num_ads].mask = 0;
-            // ads[num_ads].router_id = sr->routing_table->gw.s_addr;
-            // printf("%d\n", num_ads+1);
-            // printf("Subnet: %s\n", get_ipstr(0));
-            // printf("Mask: %s\n", get_ipstr(0));
-            // printf("Router ID: %s\n", get_ipstr(0));
-            // num_ads++;
         }
 
         assert(num_ads < 4);
@@ -456,14 +428,6 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
     uint32_t next_hop[MAX_LINK_STATE_ENTRIES];//Todo: Free this memory
     char next_iface[MAX_LINK_STATE_ENTRIES][SR_IFACE_NAMELEN];
     struct sr_rt *temp_routing_table = d_rt;
-    // struct sr_rt *temp_routing_table = malloc(sizeof(struct sr_rt) * MAX_LINK_STATE_ENTRIES); // Allocate memory dynamically
-    // struct sr_rt *temp = temp_routing_table;
-    // while (temp_routing_table) {
-    //     struct sr_rt* next = temp_routing_table->next;
-    //     free(temp_routing_table);
-    //     temp_routing_table = next;
-    // }
-    // temp_routing_table=temp;
 
     int temp_rt_counter = 0;
     int rear = 0;
@@ -535,11 +499,6 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
         
     }
 
-
-    // if (sr->dynamic_routing_table != NULL) {
-    //     free(sr->dynamic_routing_table);
-    // }
-
     struct sr_rt* prev_drt = NULL;
     for (int j=0; j<temp_rt_counter;j++){
         struct sr_rt* new_drt = malloc(sizeof(struct sr_rt));
@@ -557,106 +516,8 @@ void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
         }
         prev_drt = new_drt;
     }
-
     return;
 }
-
-
-// void create_routing_table(uint32_t source_router_id, struct sr_instance* sr) {
-
-//     uint32_t qt[MAX_LINK_STATE_ENTRIES];//Todo: Free this memory
-//     uint32_t next_hop[MAX_LINK_STATE_ENTRIES];//Todo: Free this memory
-//     struct sr_rt *temp_routing_table = malloc(sizeof(struct sr_rt) * MAX_LINK_STATE_ENTRIES); // Allocate memory dynamically
-//     // struct sr_rt *temp = temp_routing_table;
-//     // while (temp_routing_table) {
-//     //     struct sr_rt* next = temp_routing_table->next;
-//     //     free(temp_routing_table);
-//     //     temp_routing_table = next;
-//     // }
-//     // temp_routing_table=temp;
-
-//     int temp_rt_counter = 0;
-//     int rear = 0;
-//     int front = 0;
-//     int rt_index = 0; // Start index for routing table
-
-//     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++){
-//         ls_db[i].color=WHITE;
-//     }
-
-//     qt[0] = source_router_id;
-//     rear++;
-//     next_hop[0] = 0;
-
-//     while(front<rear){
-//         uint32_t current_router_id = qt[front];
-//         uint32_t current_next_hop = next_hop[front];
-
-//         for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
-//             if (ls_db[i].state == 1 && ls_db[i].source_router_id == current_router_id) {
-                
-//                 uint32_t curr_subnet = ls_db[i].subnet;
-//                 int link_used = 0;
-
-//                 //Check if this subnet was used before (that is already present in the routing table)
-//                 for (int j=0; j<temp_rt_counter;j++){
-//                     if(temp_routing_table[j].dest.s_addr == curr_subnet) {
-//                         link_used=1;
-//                         break;
-//                     }
-//                 }
-
-//                 if(link_used==0){
-//                     qt[rear] = ls_db[i].neighbor_router_id; // Ensure null termination
-//                     next_hop[rear] = (source_router_id == current_router_id) ? ls_db[i].neighbor_router_id :
-//                                         current_next_hop;                    
-
-//                     // add to dynamic router
-//                     temp_routing_table[temp_rt_counter].dest.s_addr = curr_subnet;
-//                     temp_routing_table[temp_rt_counter].gw.s_addr = next_hop[rear];
-//                     temp_routing_table[temp_rt_counter].mask.s_addr = ls_db[i].mask;
-//                     strncpy(temp_routing_table[temp_rt_counter].interface, ls_db[i].interface, SR_IFACE_NAMELEN);
-//                     temp_routing_table[temp_rt_counter].next = NULL;
-
-//                     if (temp_rt_counter > 0) {
-//                         temp_routing_table[temp_rt_counter - 1].next = &temp_routing_table[temp_rt_counter];
-//                     }
-                
-//                     temp_rt_counter++;
-//                     rear++;
-//                 }
-                                
-//                 ls_db[i].color = BLACK;
-//             }
-//         }
-//         front++;
-//     }
-
-
-//     // if (sr->dynamic_routing_table != NULL) {
-//     //     free(sr->dynamic_routing_table);
-//     // }
-
-//     struct sr_rt* prev_drt = NULL;
-//     for (int j=0; j<temp_rt_counter;j++){
-//         struct sr_rt* new_drt = malloc(sizeof(struct sr_rt));
-
-//         new_drt->dest.s_addr = temp_routing_table[j].dest.s_addr ;
-//         new_drt->gw.s_addr = temp_routing_table[j].gw.s_addr;
-//         new_drt->mask.s_addr = temp_routing_table[j].mask.s_addr;
-//         strncpy(new_drt->interface, temp_routing_table[j].interface, SR_IFACE_NAMELEN);
-//         new_drt->next = NULL;
-
-//         if (prev_drt != NULL) {
-//             prev_drt->next = new_drt;
-//         } else {
-//             sr->dynamic_routing_table = new_drt;
-//         }
-//         prev_drt = new_drt;
-//     }
-
-//     return;
-// }
 
 
 void init_seq(){
@@ -666,7 +527,6 @@ void init_seq(){
 }
 
 int is_valid_sequence(uint32_t source, time_t check){
-    printf("Seq number %d\n", check);
     for (int i = 0; i < MAX_ROUTERS; i++) {
         if (seq[i].source_router_id == source) {
             if(seq[i].last_sequence_num>=check){
@@ -699,13 +559,6 @@ void print_link_state_table() {
     printf("-------------------------------------------------------------\n");
 
     for (int i = 0; i < MAX_LINK_STATE_ENTRIES; i++) {
-        // print_ip(ls_db[i].source_router_id);
-        // printf(" | ");
-        // print_ip(ls_db[i].neighbor_router_id);
-        // printf(" | ");
-        // print_ip(ls_db[i].subnet);
-        // printf(" | ");
-        // print_ip(ls_db[i].mask);
         printf("%13s | %13s | %13s | %13s | %13s | %13s | %5s | %19ld | %6s | %5u |\n", 
                 get_ipstr(ls_db[i].source_router_id),
                 get_ipstr(ls_db[i].source_interface_id),
@@ -744,123 +597,3 @@ void print_routing_table(struct sr_rt* current) {
     }
     current = temp;
 }
-
-// void send_pwospf_lsu2(struct sr_instance *sr, struct pwospf_if *pw_iface) {
-//     struct pwospf_router *router = sr->ospf_subsys->router;
-//     struct pwospf_if* interfaces = router->interfaces;
-//     // advertisement_t *ads = (advertisement_t *)malloc(MAX_ADS * sizeof(advertisement_t));
-//     advertisement_t *ads = (advertisement_t *)malloc(sizeof(advertisement_t));
-//     advertisement_t *ads2 = (advertisement_t *)malloc(sizeof(advertisement_t));
-//     advertisement_t *ads3 = (advertisement_t *)malloc(sizeof(advertisement_t));
-//     // advertisement_t *ads = (advertisement_t *)malloc(sizeof(advertisement_t));
-
-//     int num_ads = 0;
-//     ads[0].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
-//     ads[0].mask = htonl(interfaces->iface->mask);
-//     ads[0].router_id = htonl(interfaces->neighbor_id);
-    
-//     interfaces = interfaces->next;
-//     ads2[0].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
-//     ads2[0].mask = htonl(interfaces->iface->mask);
-//     ads2[0].router_id = htonl(interfaces->neighbor_id);
-
-    
-//     interfaces = interfaces->next;
-//     ads3[0].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
-//     ads3[0].mask = htonl(interfaces->iface->mask);
-//     ads3[0].router_id = htonl(interfaces->neighbor_id);
-
-//     num_ads = 4;
-    
-//     // while (interfaces) {
-//     //     ads[num_ads].subnet = htonl(interfaces->iface->ip & interfaces->iface->mask);
-//     //     ads[num_ads].mask = htonl(interfaces->iface->mask);
-//     //     ads[num_ads].router_id = htonl(interfaces->neighbor_id);
-//     //     num_ads++;
-//     //     interfaces = interfaces->next;
-//     // }
-//     unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t) + sizeof(advertisement_t) + 2*sizeof(advertisement_t);
-//     // unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t) + sizeof(advertisement_t);
-//     // unsigned int lsu_len = sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t);
-//     uint8_t *lsu_packet = (uint8_t *)malloc(lsu_len);
-//     memset(lsu_packet, 0, lsu_len);
-
-//     pwospf_hdr_t *pwospf_hdr = (pwospf_hdr_t *)lsu_packet;
-//     pwospf_hdr->version = PWOSPF_VERSION;
-//     pwospf_hdr->type = PWOSPF_TYPE_LSU;
-//     pwospf_hdr->packet_length = htons(lsu_len);
-//     pwospf_hdr->router_id = (router->router_id);
-//     // pwospf_hdr->area_id = htonl(PWOSPF_AREA_ID);
-//     // pwospf_hdr->checksum = 0; // Placeholder
-//     // pwospf_hdr->autype = htons(PWOSPF_AU_TYPE);
-//     // pwospf_hdr->authentication = 0;
-
-//     // lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
-//     // lsu_hdr->sequence = htonl(router->sequence_number++);
-//     // lsu_hdr->ttl = DEFAULT_LSU_TTL;
-//     // lsu_hdr->num_ads = htonl(num_ads);
-
-//     lsu_hdr_t *lsu_hdr = (lsu_hdr_t *)(lsu_packet + sizeof(pwospf_hdr_t));
-//     lsu_hdr->sequence = htons(router->sequence_number++);
-//     lsu_hdr->ttl = DEFAULT_LSU_TTL;
-//     lsu_hdr->num_ads = num_ads;
-
-//     memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t), ads, sizeof(advertisement_t));
-//     memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t), ads2, sizeof(advertisement_t));
-//     memcpy(lsu_packet + sizeof(pwospf_hdr_t) + sizeof(lsu_hdr_t) + sizeof(advertisement_t) + sizeof(advertisement_t), ads3, sizeof(advertisement_t));
-
-//     printf("Adv pack size: %d\n", sizeof(advertisement_t));
-
-//     // int checksum_len = lsu_len - sizeof(pwospf_hdr->authentication);
-//     // pwospf_hdr->checksum = get_checksum((uint16_t *)lsu_packet, checksum_len / 2);
-
-//     unsigned int ip_len = sizeof(struct ip) + lsu_len;
-//     uint8_t *ip_packet = (uint8_t *)malloc(ip_len);
-//     memset(ip_packet, 0, ip_len);
-
-//     struct ip *ip_hdr = (struct ip *)ip_packet;
-//     ip_hdr->ip_hl = 5;
-//     ip_hdr->ip_v = 4;
-//     ip_hdr->ip_tos = 0;
-//     ip_hdr->ip_len = htons(ip_len);
-//     ip_hdr->ip_id = htons(0);
-//     ip_hdr->ip_off = htons(IP_DF);
-//     ip_hdr->ip_ttl = 64;
-//     ip_hdr->ip_p = OSPF_PROTOCOL_NUMBER;
-//     ip_hdr->ip_src.s_addr = pw_iface->iface->ip;
-//     ip_hdr->ip_dst.s_addr = pw_iface->neighbor_ip;
-
-//     ip_hdr->ip_sum = get_checksum((uint16_t *)ip_hdr, ip_hdr->ip_hl * 2);//Verify if you need this in htons
-//     memcpy(ip_packet + sizeof(struct ip), lsu_packet, lsu_len);
-
-//     unsigned int ether_len = sizeof(struct sr_ethernet_hdr) + ip_len;
-//     uint8_t *ether_frame = (uint8_t *)malloc(ether_len);
-//     memset(ether_frame, 0, ether_len);
-
-//     struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)ether_frame;
-//     eth_hdr->ether_dhost[0] = 0x01;
-//     eth_hdr->ether_dhost[1] = 0x00;
-//     eth_hdr->ether_dhost[2] = 0x5e;
-//     eth_hdr->ether_dhost[3] = 0x00;
-//     eth_hdr->ether_dhost[4] = 0x00;
-//     eth_hdr->ether_dhost[5] = 0x05;
-
-//     memcpy(eth_hdr->ether_shost, pw_iface->iface->addr, ETHER_ADDR_LEN);
-//     eth_hdr->ether_type = htons(ETHERTYPE_IP);
-
-//     memcpy(ether_frame + sizeof(struct sr_ethernet_hdr), ip_packet, ip_len);
-
-//     sr_send_packet(sr, ether_frame, ether_len, pw_iface->iface->name);
-
-//     free(ip_packet);
-//     free(ether_frame);
-    
-// };
-    // pthread_mutex_lock(&sr->ospf_subsys->lock); // Ensure thread safety
-
-    // Count the number of valid interfaces (advertisements)
-
-    // Allocate memory for the LSU packet
-
-    // Construct LSU header
-    // Add advertisements from interfaces

@@ -411,7 +411,7 @@ void handle_arp(struct sr_instance *sr,
     struct sr_if *iface = sr_get_interface(sr, interface);
     if (ntohs(arp_hdr->ar_op) == ARP_REQUEST)
     {
-        printf("ARP Request\n");
+        // printf("ARP Request\n");
         // printf("Sender: %s", get_ipstr(arp_hdr->ar_sip));
         // printf("eceiver: %s", get_ipstr(arp_hdr->ar_tip));
         if (iface && iface->ip == arp_hdr->ar_tip)
@@ -421,8 +421,8 @@ void handle_arp(struct sr_instance *sr,
             sr_send_packet(sr, packet, len, interface);
         }
     } else {
-        printf("ARP Reply\n");
-        print_arppcache_stats();
+        // printf("ARP Reply\n");
+        // print_arppcache_stats();
         struct arpcache* new_arpcache = create_arpcache_entry(arp_hdr->ar_sip, arp_hdr->ar_sha, interface);
         int success = buffer_arp_entry(new_arpcache);
 
@@ -464,8 +464,8 @@ void handle_ip(uint8_t *packet,
                 return;
             }
 
-            printf("Got ICMP: %s\n", interface);
-            printf("Replying ICMP: %s\n", match_iface->name);
+            // printf("Got ICMP: %s\n", interface);
+            // printf("Replying ICMP: %s\n", match_iface->name);
 
             icmphdr->type = 0;
             icmphdr->checksum = 0;
@@ -526,37 +526,28 @@ void handle_ip(uint8_t *packet,
     pthread_mutex_unlock(&sr->ospf_subsys->lock2);
 
     if(next_if_found==0){
-        printf("Next Interface Null - dropping packet\n");
+        // printf("Next Interface Null - dropping packet\n");
         return;
     } else {
         if (protocol==IPPROTO_ICMP){
-            printf("Next Interface found: %s\n", next_interface);
+            // printf("Next Interface found: %s\n", next_interface);
             // printf("Next Interface found: %s\n", next_interface);
         }
     }
 
     if (nxthop.s_addr == 0)
     {
-        print_message("handle ip B");
+        // print_message("handle ip B");
         nxthop.s_addr = ip_hdr->ip_dst.s_addr;
                         !ENABLE_PRINT ? :  print_message("handle ip B");
     }
     struct sr_if* next_iface = sr_get_interface(sr, next_interface);
-    printf("DEBUG print 540\n");
-    printf("Next Iface addr: %d\n", next_iface);
-    printf("Next Iface addr: %d\n", next_iface->ip);
-    printf("DEBUG print 542\n");
-    // printf("Next Iface addr: \n%s", get_ipstr(next_iface->name));
 
-    printf("DEBUG print 545\n");
     uint8_t* target_mac = lookup_arpcache(nxthop.s_addr);
-    printf("DEBUG print 547\n");
     if (target_mac == NULL) {
-        printf("DEBUG print 549\n");
         struct ipcache* new_ipcache = create_ipcache_entry(packet, len, interface, nxthop.s_addr, NULL, next_interface);
         int success = buffer_ip_packet(new_ipcache);
         if (success) {
-            printf("DEBUG print 553\n");
             uint8_t *arp_packet = create_arp(next_iface, nxthop.s_addr);
             sr_send_packet(sr, arp_packet, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr), next_interface);
         } else {
@@ -564,7 +555,6 @@ void handle_ip(uint8_t *packet,
             return;
         }
     } else {
-        printf("DEBUG print 558\n");
         memcpy(eth_hdr->ether_dhost, target_mac, ETHER_ADDR_LEN);
         memcpy(eth_hdr->ether_shost, next_iface->addr, ETHER_ADDR_LEN);
 
@@ -693,14 +683,9 @@ void* ipcache_thread(void* sr_arg) {
                 if (IP_CACHE[i].numoftimes < MAX_IP_RETRY_TIME) {
                     struct ipcache* new_ipcache = create_ipcache_entry(IP_CACHE[i].packet, IP_CACHE[i].len
                                     , IP_CACHE[i].in_ifacename, IP_CACHE[i].nexthop, NULL, IP_CACHE[i].out_ifacename);
-                    // printf("Debug 664\n");
                     struct sr_if *next_iface = sr_get_interface(sr, IP_CACHE[i].out_ifacename);
-                    // printf("Debug 666\n");
                     uint8_t *arp_packet = create_arp(next_iface, IP_CACHE[i].nexthop);
-                    // printf("Debug 668\n");
                     sr_send_packet(sr, arp_packet, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr), IP_CACHE[i].out_ifacename);
-                    // printf("***********################ Retrying!\n");
-                    // printf("************Try number: %d **********", IP_CACHE[i].numoftimes);
                     IP_CACHE[i].numoftimes++;
                 } else {
                     //todo: send icmp

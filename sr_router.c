@@ -88,7 +88,7 @@ void sr_handlepacket(struct sr_instance *sr,
 
     switch (ntohs(eth_hdr->ether_type)) {
         case ETHERTYPE_ARP:
-            printf("Received ARP packet!!\n");
+            // printf("Received ARP packet!!\n");
             handle_arp(sr, packet, len, interface);
             break;
         case ETHERTYPE_IP:
@@ -229,7 +229,7 @@ void sr_handlepacket(struct sr_instance *sr,
                 }
             }
             else{
-                printf("Received IP packet!!\n");
+                // printf("Received IP packet!!\n");
                 populate_ip_header(packet);
                 handle_ip(packet, sr, len, interface);
             }
