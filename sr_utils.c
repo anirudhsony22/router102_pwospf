@@ -412,8 +412,8 @@ void handle_arp(struct sr_instance *sr,
     if (ntohs(arp_hdr->ar_op) == ARP_REQUEST)
     {
         printf("ARP Request\n");
-        printf("Sender: %s", get_ipstr(arp_hdr->ar_sip));
-        printf("eceiver: %s", get_ipstr(arp_hdr->ar_tip));
+        // printf("Sender: %s", get_ipstr(arp_hdr->ar_sip));
+        // printf("eceiver: %s", get_ipstr(arp_hdr->ar_tip));
         if (iface && iface->ip == arp_hdr->ar_tip)
         {
             prepare_arp_reply(sr, iface, arp_hdr, eth_hdr->ether_shost, interface);
@@ -510,20 +510,20 @@ void handle_ip(uint8_t *packet,
         rt_header = rt_header->next;
     }
 
-    // pthread_mutex_lock(&sr->ospf_subsys->lock2);
-    // rt_header = sr->dynamic_routing_table;
-    // while (rt_header != NULL)
-    // {
-    //     if ((rt_header->dest.s_addr & rt_header->mask.s_addr) == ((ip_hdr->ip_dst.s_addr) & rt_header->mask.s_addr) && mask.s_addr <= ntohl(rt_header->mask.s_addr))
-    //     {
-    //         mask.s_addr = ntohl(rt_header->mask.s_addr);
-    //         nxthop.s_addr = rt_header->gw.s_addr;
-    //         memcpy(next_interface, rt_header->interface, sizeof(next_interface));
-    //         next_if_found=1;
-    //     }
-    //     rt_header = rt_header->next;
-    // }
-    // pthread_mutex_unlock(&sr->ospf_subsys->lock2);
+    pthread_mutex_lock(&sr->ospf_subsys->lock2);
+    rt_header = sr->dynamic_routing_table;
+    while (rt_header != NULL)
+    {
+        if ((rt_header->dest.s_addr & rt_header->mask.s_addr) == ((ip_hdr->ip_dst.s_addr) & rt_header->mask.s_addr) && mask.s_addr <= ntohl(rt_header->mask.s_addr))
+        {
+            mask.s_addr = ntohl(rt_header->mask.s_addr);
+            nxthop.s_addr = rt_header->gw.s_addr;
+            memcpy(next_interface, rt_header->interface, sizeof(next_interface));
+            next_if_found=1;
+        }
+        rt_header = rt_header->next;
+    }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock2);
 
     if(next_if_found==0){
         printf("Next Interface Null - dropping packet\n");

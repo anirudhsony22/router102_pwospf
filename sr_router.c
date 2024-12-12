@@ -122,7 +122,11 @@ void sr_handlepacket(struct sr_instance *sr,
                                 interfaces->neighbor_id = neighbor_id;
 
                                 track_lsdb.source_router_id = sr->ospf_subsys->router->router_id;
+                                track_lsdb.source_interface_id = interfaces->iface->ip;
+
                                 track_lsdb.neighbor_router_id = neighbor_id;
+                                track_lsdb.neighbor_interface_id = ip_hdr->ip_src.s_addr;
+
                                 track_lsdb.subnet = interfaces->iface->ip&interfaces->iface->mask;
                                 track_lsdb.mask = interfaces->iface->mask;
                                 strncpy(track_lsdb.interface, interfaces->iface->name, SR_IFACE_NAMELEN);
@@ -150,7 +154,9 @@ void sr_handlepacket(struct sr_instance *sr,
                         if (pthread_mutex_lock(&sr->ospf_subsys->lock2)) assert(0); 
                         
                         update_lsdb(track_lsdb.source_router_id,
+                            track_lsdb.source_interface_id,
                             track_lsdb.neighbor_router_id,
+                            track_lsdb.neighbor_interface_id,
                             track_lsdb.subnet,
                             track_lsdb.mask,
                             1,
@@ -196,11 +202,11 @@ void sr_handlepacket(struct sr_instance *sr,
                             uint32_t mask = (lsu_a[i].mask);
                             uint32_t neighbor_id = (lsu_a[i].router_id);
 
-                            update_lsdb(source_router_id, neighbor_id, subnet, mask, 0, "");
+                            update_lsdb(source_router_id, 0, neighbor_id, 0, subnet, mask, 0, "");
                         }
 
                         if (has_default_gw) {
-                            update_lsdb(source_router_id, 0, 0, 0, 0, "");
+                            update_lsdb(source_router_id, 0, 0, 0, 0, 0, 0, "");
                         }
 
                         create_routing_table(sr->ospf_subsys->router->router_id, sr);

@@ -95,7 +95,9 @@ typedef struct pwospf_hello {
 
 typedef struct link_state_entry {
     uint32_t source_router_id; 
+    uint32_t source_interface_id; 
     uint32_t neighbor_router_id; 
+    uint32_t neighbor_interface_id; 
     uint32_t subnet;             
     uint32_t mask;               
     char interface[SR_IFACE_NAMELEN];
