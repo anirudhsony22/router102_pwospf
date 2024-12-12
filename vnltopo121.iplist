@@ -1,0 +1,12 @@
+ip_gateway_eth0=172.29.5.81
+ip_vhost1_eth0=172.29.5.82
+ip_vhost1_eth1=172.29.5.84
+ip_vhost1_eth2=172.29.5.88
+ip_vhost2_eth0=172.29.5.85
+ip_vhost2_eth1=172.29.5.86
+ip_vhost2_eth2=172.29.5.93
+ip_vhost3_eth0=172.29.5.89
+ip_vhost3_eth1=172.29.5.90
+ip_vhost3_eth2=172.29.5.94
+ip_server1_eth0=172.29.5.87
+ip_server2_eth0=172.29.5.91

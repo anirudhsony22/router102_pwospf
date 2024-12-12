@@ -56,15 +56,12 @@ uint8_t *create_arp(struct sr_if *iface, uint32_t target_ip)
 {
     unsigned int len = sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr);
     uint8_t *packet = (uint8_t *)malloc(len);
-
     memset(packet, 0, len);
     
     struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *)packet;
     struct sr_arphdr *arp_hdr = (struct sr_arphdr *)(packet + sizeof(struct sr_ethernet_hdr));
-
     memset(eth_hdr->ether_dhost, 0xff, ETHER_ADDR_LEN);
     memcpy(eth_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
-    
     eth_hdr->ether_type = htons(ETHERTYPE_ARP);
 
     arp_hdr->ar_hrd = htons(ARPHDR_ETHER);
@@ -76,7 +73,6 @@ uint8_t *create_arp(struct sr_if *iface, uint32_t target_ip)
     arp_hdr->ar_sip = iface->ip;
     memset(arp_hdr->ar_tha, 0xff, ETHER_ADDR_LEN);
     arp_hdr->ar_tip = target_ip;
-
     return packet;
 }
 
@@ -415,6 +411,9 @@ void handle_arp(struct sr_instance *sr,
     struct sr_if *iface = sr_get_interface(sr, interface);
     if (ntohs(arp_hdr->ar_op) == ARP_REQUEST)
     {
+        // printf("ARP Request\n");
+        // printf("Sender: %s", get_ipstr(arp_hdr->ar_sip));
+        // printf("eceiver: %s", get_ipstr(arp_hdr->ar_tip));
         if (iface && iface->ip == arp_hdr->ar_tip)
         {
             prepare_arp_reply(sr, iface, arp_hdr, eth_hdr->ether_shost, interface);
@@ -422,6 +421,8 @@ void handle_arp(struct sr_instance *sr,
             sr_send_packet(sr, packet, len, interface);
         }
     } else {
+        // printf("ARP Reply\n");
+        // print_arppcache_stats();
         struct arpcache* new_arpcache = create_arpcache_entry(arp_hdr->ar_sip, arp_hdr->ar_sha, interface);
         int success = buffer_arp_entry(new_arpcache);
 
@@ -462,6 +463,10 @@ void handle_ip(uint8_t *packet,
             if(icmphdr->type==0){
                 return;
             }
+
+            // printf("Got ICMP: %s\n", interface);
+            // printf("Replying ICMP: %s\n", match_iface->name);
+
             icmphdr->type = 0;
             icmphdr->checksum = 0;
             icmphdr->checksum = get_checksum((uint16_t *)icmphdr, sizeof(struct icmp));
@@ -491,7 +496,8 @@ void handle_ip(uint8_t *packet,
     mask.s_addr = 0;
     nxthop.s_addr = 0;
     char next_interface[SR_IFACE_NAMELEN];
-
+    int next_if_found;
+    next_if_found=0;
     while (rt_header != NULL)
     {
         if ((rt_header->dest.s_addr & rt_header->mask.s_addr) == ((ip_hdr->ip_dst.s_addr) & rt_header->mask.s_addr) && mask.s_addr <= ntohl(rt_header->mask.s_addr))
@@ -499,23 +505,48 @@ void handle_ip(uint8_t *packet,
             mask.s_addr = ntohl(rt_header->mask.s_addr);
             nxthop.s_addr = rt_header->gw.s_addr;
             memcpy(next_interface, rt_header->interface, sizeof(next_interface));
+            next_if_found=1;
         }
         rt_header = rt_header->next;
     }
 
+    pthread_mutex_lock(&sr->ospf_subsys->lock2);
+    rt_header = sr->dynamic_routing_table;
+    while (rt_header != NULL)
+    {
+        if ((rt_header->dest.s_addr & rt_header->mask.s_addr) == ((ip_hdr->ip_dst.s_addr) & rt_header->mask.s_addr) && mask.s_addr <= ntohl(rt_header->mask.s_addr))
+        {
+            mask.s_addr = ntohl(rt_header->mask.s_addr);
+            nxthop.s_addr = rt_header->gw.s_addr;
+            memcpy(next_interface, rt_header->interface, sizeof(next_interface));
+            next_if_found=1;
+        }
+        rt_header = rt_header->next;
+    }
+    pthread_mutex_unlock(&sr->ospf_subsys->lock2);
+
+    if(next_if_found==0){
+        // printf("Next Interface Null - dropping packet\n");
+        return;
+    } else {
+        if (protocol==IPPROTO_ICMP){
+            // printf("Next Interface found: %s\n", next_interface);
+            // printf("Next Interface found: %s\n", next_interface);
+        }
+    }
+
     if (nxthop.s_addr == 0)
     {
+        // print_message("handle ip B");
         nxthop.s_addr = ip_hdr->ip_dst.s_addr;
                         !ENABLE_PRINT ? :  print_message("handle ip B");
     }
-
     struct sr_if* next_iface = sr_get_interface(sr, next_interface);
 
     uint8_t* target_mac = lookup_arpcache(nxthop.s_addr);
     if (target_mac == NULL) {
         struct ipcache* new_ipcache = create_ipcache_entry(packet, len, interface, nxthop.s_addr, NULL, next_interface);
         int success = buffer_ip_packet(new_ipcache);
-
         if (success) {
             uint8_t *arp_packet = create_arp(next_iface, nxthop.s_addr);
             sr_send_packet(sr, arp_packet, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr), next_interface);
@@ -641,6 +672,7 @@ void* ipcache_thread(void* sr_arg) {
 
     while (1) {
         // printf("Thread is running...\n");
+        // print_routing_table(sr->dynamic_routing_table);
 
         pthread_mutex_lock(&CACHE_LOCK);  
 
@@ -651,13 +683,9 @@ void* ipcache_thread(void* sr_arg) {
                 if (IP_CACHE[i].numoftimes < MAX_IP_RETRY_TIME) {
                     struct ipcache* new_ipcache = create_ipcache_entry(IP_CACHE[i].packet, IP_CACHE[i].len
                                     , IP_CACHE[i].in_ifacename, IP_CACHE[i].nexthop, NULL, IP_CACHE[i].out_ifacename);
-
                     struct sr_if *next_iface = sr_get_interface(sr, IP_CACHE[i].out_ifacename);
-
                     uint8_t *arp_packet = create_arp(next_iface, IP_CACHE[i].nexthop);
                     sr_send_packet(sr, arp_packet, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr), IP_CACHE[i].out_ifacename);
-                    // printf("***********################ Retrying!\n");
-                    // printf("************Try number: %d **********", IP_CACHE[i].numoftimes);
                     IP_CACHE[i].numoftimes++;
                 } else {
                     //todo: send icmp

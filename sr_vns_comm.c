@@ -439,14 +439,16 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
 
         case VNSPACKET:
             sr_pkt = (c_packet_ethernet_header *)buf;
-
+            // printf("Alas!!!!!!!!!!!!!!!\n");
             /* -- check if it is an ARP to another router if so drop   -- */
             if ( sr_arp_req_not_for_us(sr,
                     (buf+sizeof(c_packet_header)),
                     len - sizeof(c_packet_ethernet_header) +
                     sizeof(struct sr_ethernet_hdr),
                     (char*)(buf + sizeof(c_base))) )
-            { break; }
+            {
+                printf("Opppps!!!!!!!!!!!!!!!\n");
+                 break; }
 
             /* -- log packet -- */
             sr_log_packet(sr, buf + sizeof(c_packet_header),
@@ -487,9 +489,9 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
                 fprintf(stderr,"Routing table not consistent with hardware\n");
                 return -1;
             }
+            pwospf_init(sr);
             printf(" <-- Ready to process packets --> \n");
             break;
-
             /* ---------------- VNS_RTABLE ---------------- */
         case VNS_RTABLE:
             if(!sr_handle_rtable(sr, (c_rtable*)buf))
@@ -722,12 +724,24 @@ int  sr_arp_req_not_for_us(struct sr_instance* sr,
     struct sr_arphdr*       a_hdr = 0;
 
     if (len < sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr) )
-    { return 0; }
+    { 
+        
+        
+        return 0; }
+        // printf("wrong length\n");
 
     assert(iface);
 
     e_hdr = (struct sr_ethernet_hdr*)packet;
     a_hdr = (struct sr_arphdr*)(packet + sizeof(struct sr_ethernet_hdr));
+
+    // printf("case 1 %d\n", (e_hdr->ether_type == htons(ETHERTYPE_ARP)));
+    // printf("case 2 %d\n", (a_hdr->ar_op      == htons(ARP_REQUEST)));
+    // printf("case 3 %d\n", (a_hdr->ar_tip     != iface->ip ));
+
+    // printf("case 1 %d\n", (e_hdr->ether_type == htons(ETHERTYPE_ARP)));
+    // printf("case 2 %d\n", (a_hdr->ar_op      == htons(ARP_REQUEST)));
+    // printf("case 3 %d\n", (a_hdr->ar_tip     != iface->ip ));
 
     if ( (e_hdr->ether_type == htons(ETHERTYPE_ARP)) &&
             (a_hdr->ar_op      == htons(ARP_REQUEST))   &&
